@@ -140,21 +140,36 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Task details**: ID, description, file paths, parallel markers [P]
    - **Execution flow**: Order and dependency requirements
 
-6. Execute implementation following the task plan:
+6. **Shared Inbox: Pre-Task Coordination** (if `FEATURE_DIR/inbox/` exists):
+
+   Before executing any task that has dependencies (as identified in tasks.md dependency chain):
+
+   a. **Check for dependency completion signals**: Scan `FEATURE_DIR/inbox/` for files matching `*-COMPLETE-*.md`. For each dependency task, parse each message's frontmatter and match the `task_id` field by exact equality (not substring — e.g., `T01` must not match `T010`). If found, read the message for:
+      - Summary of what was built
+      - Deviations from plan (adapt your approach if needed)
+      - Decisions that affect your task
+
+   b. **Check for unresolved escalations**: List `ESC-*.md` files and check for matching `RES-ESC-*.md`. If unresolved escalations exist that are addressed to your role or affect your task, surface them before proceeding.
+
+   c. **Cross-feature check** (if `FEATURE_DIR/concurrent/` exists with symlinks): For each symlink in `FEATURE_DIR/concurrent/`, resolve its target to an absolute path and only follow it if the resolved target remains within the repository's `specs/` directory. If the target is outside this tree, warn and skip. For each valid symlink target, scan the linked feature's `inbox/` for `*-CROSS-*.md` files. Read only CROSS-type messages — ignore all other message types from concurrent features. Report any cross-feature messages that affect shared code or interfaces relevant to your current task. If a symlink is broken (target doesn't exist), report a warning and skip it.
+
+   If `FEATURE_DIR/inbox/` does not exist, skip this step entirely.
+
+7. Execute implementation following the task plan:
    - **Phase-by-phase execution**: Complete each phase before moving to the next
    - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together  
    - **Follow TDD approach**: Execute test tasks before their corresponding implementation tasks
    - **File-based coordination**: Tasks affecting the same files must run sequentially
    - **Validation checkpoints**: Verify each phase completion before proceeding
 
-7. Implementation execution rules:
+8. Implementation execution rules:
    - **Setup first**: Initialize project structure, dependencies, configuration
    - **Tests before code**: If you need to write tests for contracts, entities, and integration scenarios
    - **Core development**: Implement models, services, CLI commands, endpoints
    - **Integration work**: Database connections, middleware, logging, external services
    - **Polish and validation**: Unit tests, performance optimization, documentation
 
-8. Progress tracking and error handling:
+9. Progress tracking and error handling:
    - Report progress after each completed task
    - Halt execution if any non-parallel task fails
    - For parallel tasks [P], continue with successful tasks, report failed ones
@@ -162,7 +177,23 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Suggest next steps if implementation cannot proceed
    - **IMPORTANT** For completed tasks, make sure to mark the task off as [X] in the tasks file.
 
-9. Completion validation:
+10. **Shared Inbox: Post-Task Signals** (if `FEATURE_DIR/inbox/` exists):
+
+   After marking a task as complete:
+
+   a. **Post COMPLETE message**: Create a new file in `FEATURE_DIR/inbox/` named `{timestamp}-COMPLETE-{your-agent-slug}.md` following the inbox message template format. Include:
+      - Task ID that was completed
+      - Brief summary of what was built
+      - Any deviations from the plan
+      - Key decisions made that affect other tasks
+
+   b. **Post CROSS message** (if `FEATURE_DIR/concurrent/` has symlinks AND the completed task modified shared code or interfaces): Create a CROSS message in your own inbox describing the shared change. Concurrent feature agents will discover it via their symlinks.
+
+   c. **Post HANDOFF message** (if this was the last task in a phase): Create a HANDOFF message summarizing the entire phase — decisions, deviations, patterns established, known issues, environment details. This is the primary context transfer mechanism between phases.
+
+   If `FEATURE_DIR/inbox/` does not exist, skip this step entirely. Creating the inbox directory is optional — it is created on first use when parallel coordination is desired.
+
+11. Completion validation:
    - Verify all required tasks are completed
    - Check that implemented features match the original specification
    - Validate that tests pass and coverage meets requirements
@@ -171,7 +202,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit.tasks` first to regenerate the task list.
 
-10. **Check for extension hooks**: After completion validation, check if `.specify/extensions.yml` exists in the project root.
+12. **Check for extension hooks**: After completion validation, check if `.specify/extensions.yml` exists in the project root.
     - If it exists, read it and look for entries under the `hooks.after_implement` key
     - If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
     - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
