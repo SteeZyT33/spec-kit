@@ -50,3 +50,7 @@ docs/dev
 .specify/extensions/.cache/
 .specify/extensions/.backup/
 .specify/extensions/*/local-config.yml
+
+# Local spec-kit-on-spec-kit development
+specs/
+docs/superpowers/
