@@ -103,6 +103,7 @@ class TestReviewCommandFrontmatter:
         fm = _parse_frontmatter(_REVIEW_CMD)
         expected_tools = [
             'github/github-mcp-server/issue_write',
+            'github/github-mcp-server/create_pull_request',
             'github/github-mcp-server/pull_request_review_write',
         ]
         assert fm["tools"] == expected_tools, f"Tools must match contract: {expected_tools}"

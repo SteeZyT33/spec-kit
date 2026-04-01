@@ -5,6 +5,7 @@ scripts:
   ps: scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
 tools:
   - 'github/github-mcp-server/issue_write'
+  - 'github/github-mcp-server/create_pull_request'
   - 'github/github-mcp-server/pull_request_review_write'
 handoffs:
   - label: Continue Implementation
