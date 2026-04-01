@@ -36,6 +36,16 @@ description: "Review report template for post-implementation review output"
 
 ### PR: #[number] — [status]
 - Comments: [total] | Addressed: [n] | Rejected: [n] | Issued: [n] | Clarify: [n]
+- Batch-rejected: [count] ([path pattern])
+
+### External Comment Responses
+<!-- Populated when --comments-only is used or when processing PR reviewer comments -->
+| # | Reviewer | File | Status | Detail |
+|---|---------|------|--------|--------|
+
+### Post-Merge Verification
+<!-- Populated when --post-merge is used or after merge is detected -->
+- REVERTED: [count] | OK: [count] | Issues created: [issue numbers]
 
 <!--
   If GitHub tools are unavailable, replace the PR section with:

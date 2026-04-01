@@ -150,6 +150,7 @@ class TestReviewCommandContent:
         assert "--security" in content, "Must document --security flag"
         assert "--phase" in content, "Must document --phase flag"
         assert "--parallel" in content, "Must document --parallel flag"
+        assert "--comments-only" in content, "Must document --comments-only flag"
         assert "init-options.json" in content, "Must reference agent detection"
 
     def test_has_ci_verification(self):
@@ -157,6 +158,39 @@ class TestReviewCommandContent:
         assert "Never modify CI configuration" in content, (
             "Must include specific CI integrity rule"
         )
+
+    def test_has_comments_only_mode(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "## Comments-Only Mode" in content, "Must have Comments-Only Mode section"
+        assert "skip" in content.lower() and "review passes" in content.lower(), (
+            "Comments-only must mention skipping review passes"
+        )
+
+    def test_has_batch_reject(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Batch-Reject" in content or "Batch-reject" in content or "batch-reject" in content, (
+            "Must have batch-reject feature"
+        )
+        assert "review-exclusions.md" in content, "Must reference review-exclusions.md"
+
+    def test_has_post_merge_verification(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Post-Merge Verification" in content, "Must have post-merge verification section"
+        assert "REVERTED" in content, "Must detect silent reversions"
+
+    def test_has_reviewer_profile_awareness(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Reviewer Profile" in content, "Must have reviewer profile awareness"
+        assert "copilot-pull-request-reviewer" in content, "Must mention Copilot reviewer"
+        assert "coderabbitai" in content, "Must mention CodeRabbit reviewer"
+
+    def test_has_ci_debug_structure(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "CI Debug Structure" in content, "Must have CI debug structure for new integrations"
+
+    def test_has_thread_resolution(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "resolveReviewThread" in content, "Must mention thread resolution GraphQL mutation"
 
     def test_no_unresolved_placeholders(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
