@@ -15,6 +15,11 @@ description: "Review report template for post-implementation review output"
 
 ## Phase N Review — [DATE]
 
+### Merge Conflicts: PASS | FAIL
+<!-- PASS when no conflicts with target branch; FAIL lists conflicting files -->
+<!-- Findings in CONFLICT ZONE files are flagged — resolve before relying on results -->
+- [conflicting file list, or "No conflicts with main"]
+
 ### Spec Compliance: PASS | FAIL
 <!-- For each finding, include file:line reference and the specific spec requirement -->
 - [findings with file:line references]

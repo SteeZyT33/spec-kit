@@ -93,6 +93,43 @@ You **MUST** consider the user input before proceeding (if not empty).
    - This provides context for review feedback (e.g., "The frontend task assigned to [@Frontend Developer] has...")
    - If no agent markers are present, proceed without this context
 
+6. **Check for merge conflicts** against the target branch:
+
+   Run: `git merge-tree $(git merge-base HEAD main) main HEAD`
+   Or simpler: attempt a dry-run merge and check for conflicts:
+   ```bash
+   git merge --no-commit --no-ff main 2>&1
+   MERGE_STATUS=$?
+   git merge --abort 2>/dev/null
+   ```
+
+   **If conflicts exist** (`MERGE_STATUS != 0`):
+   - List conflicting files:
+     ```
+     ## Merge Conflict Warning
+
+     This branch has merge conflicts with main. Review findings may be
+     invalid for conflicted regions — resolve conflicts before relying
+     on review results.
+
+     Conflicting files:
+     - src/api/routes.py
+     - tests/test_auth.py
+
+     **Recommendation**: Rebase or merge main into your branch, resolve
+     conflicts, then re-run `/speckit.review`.
+     ```
+   - **Do NOT stop** — continue with review passes, but:
+     - Add a `### Merge Conflicts: FAIL` section to the review output
+     - Mark the conflicting files so pass findings against those files are flagged as `[CONFLICT ZONE]`
+     - In PR Lifecycle, warn that the PR will not be mergeable until conflicts are resolved
+
+   **If no conflicts**: proceed silently (no output needed)
+
+   **Skip this check when**:
+   - `--comments-only` is passed (no review passes run)
+   - `--post-merge` is passed (already merged)
+
 ## Comments-Only Mode
 
 If `--comments-only` was passed, skip the Review Passes section entirely. Continue with **PR Lifecycle Step 1 (GitHub tool availability check)**, then proceed to **Step 4: Comment Response Protocol**. Load the existing PR (from the current branch or specified in arguments) and process only new, unresponded comments. If GitHub tools are unavailable, output "GitHub tools not available — cannot process PR comments in comments-only mode." and stop.

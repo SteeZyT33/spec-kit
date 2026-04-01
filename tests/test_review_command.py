@@ -192,6 +192,17 @@ class TestReviewCommandContent:
         content = _REVIEW_CMD.read_text(encoding="utf-8")
         assert "resolveReviewThread" in content, "Must mention thread resolution GraphQL mutation"
 
+    def test_has_merge_conflict_check(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "merge conflict" in content.lower(), "Must check for merge conflicts"
+        assert "CONFLICT ZONE" in content, "Must flag findings in conflicting files"
+        assert "Merge Conflicts: FAIL" in content, "Must report conflicts in review output"
+
+    def test_merge_conflict_skipped_for_comments_only(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "--comments-only" in content, "Must mention skipping conflict check for --comments-only"
+        assert "--post-merge" in content, "Must mention skipping conflict check for --post-merge"
+
     def test_no_unresolved_placeholders(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
         # {SCRIPT} and {ARGS} are legitimate spec-kit placeholders used by CommandRegistrar
@@ -212,6 +223,7 @@ class TestReviewTemplateFrontmatter:
     def test_has_phase_section_structure(self):
         content = _REVIEW_TEMPLATE.read_text(encoding="utf-8")
         assert "## Phase N Review" in content, "Must have phase review section template"
+        assert "### Merge Conflicts" in content, "Must have merge conflict section"
         assert "### Spec Compliance" in content, "Must have spec compliance section"
         assert "### Code Quality" in content, "Must have code quality section"
         assert "### Security" in content, "Must have security section"
