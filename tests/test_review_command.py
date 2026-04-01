@@ -99,6 +99,14 @@ class TestReviewCommandFrontmatter:
         assert isinstance(fm["tools"], list), "Tools must be a list"
         assert len(fm["tools"]) >= 1, "Must declare at least one tool"
 
+    def test_tools_match_contract(self):
+        fm = _parse_frontmatter(_REVIEW_CMD)
+        expected_tools = [
+            'github/github-mcp-server/issue_write',
+            'github/github-mcp-server/pull_request_review_write',
+        ]
+        assert fm["tools"] == expected_tools, f"Tools must match contract: {expected_tools}"
+
 
 class TestReviewCommandContent:
     """Verify the command template body follows spec-kit patterns."""
@@ -136,15 +144,17 @@ class TestReviewCommandContent:
         assert "ISSUED" in content, "Must define ISSUED status"
         assert "CLARIFY" in content, "Must define CLARIFY status"
 
-    def test_has_parallel_mode(self):
+    def test_has_all_command_flags(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "--security" in content, "Must document --security flag"
+        assert "--phase" in content, "Must document --phase flag"
         assert "--parallel" in content, "Must document --parallel flag"
         assert "init-options.json" in content, "Must reference agent detection"
 
     def test_has_ci_verification(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
-        assert "Never modify CI" in content or "never modify CI" in content or "NEVER" in content, (
-            "Must include CI integrity rule"
+        assert "Never modify CI configuration" in content, (
+            "Must include specific CI integrity rule"
         )
 
     def test_no_unresolved_placeholders(self):

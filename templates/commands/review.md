@@ -1,5 +1,5 @@
 ---
-description: Post-implementation review that validates code against spec artifacts, applies tiered fixes, creates phase PRs, and manages the GitHub review cycle.
+description: Post-implementation review command that validates code against spec artifacts, applies tiered fixes, creates phase PRs, and manages the GitHub review cycle.
 scripts:
   sh: scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
   ps: scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
