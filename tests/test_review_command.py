@@ -222,3 +222,14 @@ class TestReviewTemplateFrontmatter:
         assert "PASS" in content, "Must include PASS marker"
         assert "FAIL" in content, "Must include FAIL marker"
         assert "SKIPPED" in content, "Must include SKIPPED marker"
+
+    def test_has_extended_pr_reporting_sections(self):
+        content = _REVIEW_TEMPLATE.read_text(encoding="utf-8")
+        assert "Batch-rejected" in content, "Must include batch-rejected metric"
+        assert "### External Comment Responses" in content, (
+            "Must include external comment response table section"
+        )
+        assert "### Post-Merge Verification" in content, (
+            "Must include post-merge verification section"
+        )
+        assert "REVERTED" in content, "Post-merge section must include REVERTED marker"

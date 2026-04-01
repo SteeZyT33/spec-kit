@@ -114,6 +114,22 @@ class TestAssignDependencyAwareness:
         content = _ASSIGN_CMD.read_text(encoding="utf-8")
         assert "Dependency" in content, "Must have dependency analysis step"
         assert "handoff" in content.lower(), "Must mention handoff warnings"
+        assert "\u2192" in content, "Must show handoff warning example with arrow notation"
+
+
+class TestAssignReassignAllFlag:
+    """Tests for --reassign-all flag documentation."""
+
+    def test_has_reassign_all_flag(self):
+        content = _ASSIGN_CMD.read_text(encoding="utf-8")
+        assert "--reassign-all" in content, "Must document --reassign-all flag"
+
+    def test_reassign_all_in_quick_reference(self):
+        content = _ASSIGN_CMD.read_text(encoding="utf-8")
+        qr_start = content.find("## Quick Reference")
+        assert qr_start != -1
+        qr_section = content[qr_start:]
+        assert "--reassign-all" in qr_section, "--reassign-all must appear in Quick Reference"
 
 
 class TestAssignPhaseWeighting:

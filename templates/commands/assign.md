@@ -149,7 +149,7 @@ You **MUST** consider the user input before proceeding (if not empty).
       - Apply phase context bonus from step (a)
       - External agents: also check the agent's `description` and `tools` fields for keyword matches
       - External agents: give a small bonus (+1) if the agent's division matches the task's domain
-      - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)`
+      - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)` where `raw_score` = keyword match count + phase bonus points. A raw_score of 10+ yields confidence 1.0. The 0.3 threshold means ~3 keyword matches are needed to avoid `[@Unassigned]`.
 
    c. **Select the best match**:
       - Compute scores for external agents first

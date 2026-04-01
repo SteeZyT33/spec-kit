@@ -2708,9 +2708,8 @@ def update(
     tracker.complete("scripts", f"{updated_scripts} scripts ({variant_dir})")
 
     # Step 6: Ensure scripts are executable
-    tracker.add("executable", "Ensure scripts are executable")
+    tracker.add("chmod", "Set script permissions recursively")
     ensure_executable_scripts(target, tracker=tracker)
-    tracker.complete("executable", "done")
 
     console.print(tracker.render())
     console.print("\n[bold green]Project updated successfully![/bold green]")
