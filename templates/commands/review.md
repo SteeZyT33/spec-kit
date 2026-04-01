@@ -92,7 +92,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Comments-Only Mode
 
-If `--comments-only` was passed, skip the Review Passes section entirely. Jump directly to **PR Lifecycle > Step 4: Comment Response Protocol**. Load the existing PR (from the current branch or specified in arguments) and process only new, unresponded comments.
+If `--comments-only` was passed, skip the Review Passes section entirely. Continue with **PR Lifecycle Step 1 (GitHub tool availability check)**, then proceed to **Step 4: Comment Response Protocol**. Load the existing PR (from the current branch or specified in arguments) and process only new, unresponded comments. If GitHub tools are unavailable, output "GitHub tools not available — cannot process PR comments in comments-only mode." and stop.
 
 This mode exists because the common pattern after initial self-review is: external reviewers (Copilot, CodeRabbit, human reviewers) leave comments that need responses without re-reviewing the entire implementation.
 

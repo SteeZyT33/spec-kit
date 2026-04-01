@@ -152,6 +152,7 @@ You **MUST** consider the user input before proceeding (if not empty).
       - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)` where `raw_score` = keyword match count + phase/division bonus points. A raw_score of 10+ yields confidence 1.0. The 0.3 threshold corresponds to ~3 raw-score points (keyword matches plus any phase/division bonuses), so a raw_score < 3 results in `[@Unassigned]`.
 
    c. **Select the best match**:
+      - First, check `[@Human Lead]` phrase triggers. If any keyword phrase matches the task description, assign `[@Human Lead]` directly and skip external/internal scoring (unless the task was already pre-assigned via `--human-tasks`)
       - Compute scores for external agents first
       - If any external agent has confidence > 0.0, pick the highest-scoring external agent
       - Otherwise, compute scores for internal agents and pick the highest-scoring one

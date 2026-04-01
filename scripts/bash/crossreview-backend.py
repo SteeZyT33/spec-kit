@@ -7,7 +7,9 @@ Returns structured JSON with summary, blocking, and non_blocking findings.
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +24,26 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--prompt-file", required=True, type=Path)
     p.add_argument("--schema-file", required=True, type=Path)
     p.add_argument("--output", required=True, type=Path)
+    p.add_argument("--claude-path", default=None, help="Explicit path to claude CLI binary")
     return p.parse_args()
+
+
+def _failure_payload(harness: str, stderr: str, returncode: int) -> str:
+    """Return a structured failure JSON string for non-zero exits."""
+    return json.dumps({
+        "summary": f"{harness} exited with code {returncode}. See error details.",
+        "blocking": [{"file": "—", "issue": stderr[:2000] or "Non-zero exit with no stderr"}],
+        "non_blocking": [],
+    })
+
+
+def _run_harness(cmd: list[str], harness: str) -> str:
+    """Run a harness subprocess. Return structured failure on non-zero exit."""
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        sys.stderr.write(f"{harness} stderr: {result.stderr}\n")
+        return _failure_payload(harness, result.stderr, result.returncode)
+    return result.stdout
 
 
 def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
@@ -37,15 +58,33 @@ def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
         cmd += ["-c", f"model_reasoning_effort={args.effort}"]
     cmd += ["--output-schema", str(args.schema_file)]
     cmd.append(prompt)
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
-        sys.stderr.write(f"codex stderr: {result.stderr}\n")
-    return result.stdout
+    return _run_harness(cmd, "codex")
+
+
+def _resolve_claude(explicit_path: str | None) -> str:
+    """Resolve the claude CLI binary, checking common install locations."""
+    if explicit_path:
+        return explicit_path
+    # Check PATH first
+    found = shutil.which("claude")
+    if found:
+        return found
+    # Check common install locations (matches specify init/check resolution)
+    home = Path.home()
+    for candidate in [
+        home / ".claude" / "local" / "claude",
+        home / ".claude" / "local" / "bin" / "claude",
+        Path("/usr/local/bin/claude"),
+    ]:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return "claude"  # fallback to PATH lookup
 
 
 def invoke_claude(args: argparse.Namespace, prompt: str) -> str:
+    claude_bin = _resolve_claude(getattr(args, "claude_path", None))
     cmd = [
-        "claude", "-p",
+        claude_bin, "-p",
         "--allowedTools", "Read,Grep,Glob,Bash",
     ]
     if args.model:
@@ -53,10 +92,7 @@ def invoke_claude(args: argparse.Namespace, prompt: str) -> str:
     if args.effort:
         cmd += ["--effort", args.effort]
     cmd.append(prompt)
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
-        sys.stderr.write(f"claude stderr: {result.stderr}\n")
-    return result.stdout
+    return _run_harness(cmd, "claude")
 
 
 def invoke_gemini(args: argparse.Namespace, prompt: str) -> str:
@@ -65,15 +101,12 @@ def invoke_gemini(args: argparse.Namespace, prompt: str) -> str:
         cmd += ["-m", args.model]
     cmd += ["--output-format", "json"]
     cmd.append(prompt)
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
-        sys.stderr.write(f"gemini stderr: {result.stderr}\n")
-    out = result.stdout
+    raw = _run_harness(cmd, "gemini")
     try:
-        payload = json.loads(out)
-        return payload.get("response", out)
+        payload = json.loads(raw)
+        return payload.get("response", raw)
     except json.JSONDecodeError:
-        return out
+        return raw
 
 
 def extract_json(raw: str) -> dict:
@@ -135,6 +168,17 @@ def main() -> None:
         })
 
     parsed = extract_json(raw_result)
+
+    # Validate contract: ensure required keys exist
+    for key in ("summary", "blocking", "non_blocking"):
+        if key not in parsed:
+            parsed = {
+                "summary": parsed.get("summary", "Output missing required fields."),
+                "blocking": parsed.get("blocking", []),
+                "non_blocking": parsed.get("non_blocking", [{"file": "—", "issue": str(parsed)[:2000]}]),
+            }
+            break
+
     output_json = json.dumps(parsed, indent=2)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

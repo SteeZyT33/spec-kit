@@ -49,10 +49,17 @@ if [[ ! -f "$BACKEND" ]]; then
   exit 1
 fi
 
-# Build backend command
-BACKEND_CMD="python3 '${BACKEND}' --harness '${HARNESS}' --output '${OUTPUT}' --prompt-file '${PROMPT_FILE}' --patch-file '${PATCH_FILE}' --schema-file '${SCHEMA_FILE}'"
-[[ -n "$MODEL" ]] && BACKEND_CMD="${BACKEND_CMD} --model '${MODEL}'"
-[[ -n "$EFFORT" ]] && BACKEND_CMD="${BACKEND_CMD} --effort '${EFFORT}'"
+# Build backend command as an array (safe against injection)
+BACKEND_CMD=(
+  python3 "$BACKEND"
+  --harness "$HARNESS"
+  --output "$OUTPUT"
+  --prompt-file "$PROMPT_FILE"
+  --patch-file "$PATCH_FILE"
+  --schema-file "$SCHEMA_FILE"
+)
+[[ -n "$MODEL" ]] && BACKEND_CMD+=(--model "$MODEL")
+[[ -n "$EFFORT" ]] && BACKEND_CMD+=(--effort "$EFFORT")
 
 if [[ -n "${TMUX:-}" ]]; then
   echo "Tmux detected — splitting pane for $HARNESS review..."
@@ -61,9 +68,13 @@ if [[ -n "${TMUX:-}" ]]; then
   DONE_MARKER="${OUTPUT}.done"
   rm -f "$DONE_MARKER"
 
+  # Serialize the command safely for tmux
+  printf -v BACKEND_CMD_ESCAPED '%q ' "${BACKEND_CMD[@]}"
+  printf -v DONE_MARKER_ESCAPED '%q' "$DONE_MARKER"
+
   # Split vertically, run reviewer in new pane
   tmux split-window -h -l 50% \
-    "bash -c '${BACKEND_CMD} 2>&1; touch \"${DONE_MARKER}\"; echo; echo \"=== CROSS-REVIEW COMPLETE ===\"; sleep 5'"
+    "bash -lc '${BACKEND_CMD_ESCAPED}2>&1; touch ${DONE_MARKER_ESCAPED}; echo; echo \"=== CROSS-REVIEW COMPLETE ===\"; sleep 5'"
 
   # Poll for completion
   ELAPSED=0
@@ -79,7 +90,7 @@ if [[ -n "${TMUX:-}" ]]; then
   fi
 else
   echo "Running $HARNESS review in foreground..."
-  eval "$BACKEND_CMD"
+  "${BACKEND_CMD[@]}"
 fi
 
 echo "$OUTPUT"

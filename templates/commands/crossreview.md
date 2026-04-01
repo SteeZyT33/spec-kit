@@ -26,17 +26,18 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Any remaining text: Additional review focus or instructions for the reviewer
 
 3. **Read configuration** from `.specify/init-options.json`:
-   - `review_harness` (required): The CLI harness to invoke (`codex`, `claude`, `gemini`)
-   - `review_model` (optional): Model override for the review session
+   - `review_harness` (optional, default: `"codex"`): The CLI harness to invoke (`codex`, `claude`, `gemini`)
+   - `review_model` (optional, default: `"o4-mini-high"` for codex, `null` for others): Model override for the review session
    - `review_effort` (optional, default: `"high"`): Reasoning effort level
-   - If `review_harness` is not set, output:
+   - If `review_harness` is not set, use default `"codex"` and output a note:
      ```
-     Cross-review harness not configured. Add to .specify/init-options.json:
+     No review_harness configured — defaulting to codex (o4-mini-high).
+     To customize, add to .specify/init-options.json:
        "review_harness": "codex",
        "review_model": "o4-mini-high",
        "review_effort": "high"
      ```
-     Then stop.
+     Then continue with defaults.
 
 4. **Verify the harness CLI is installed**: Run `command -v $REVIEW_HARNESS`. If not found:
    ```
