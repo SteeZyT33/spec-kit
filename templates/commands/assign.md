@@ -85,7 +85,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    These are the **internal agents**. They are always available regardless of configuration.
 
-   > **`[@Human Lead]`** is a special agent type representing tasks that require human judgment. It is never auto-assigned via external agent matching — keyword detection is the only trigger.
+   > **`[@Human Lead]`** is a special agent type representing tasks that require human judgment. It is assigned **only** when its keyword phrases are detected in the task description. Phase-context bonuses (step 8a) can boost `[@Human Lead]`'s score when keywords are already present, but cannot independently trigger assignment — at least one keyword phrase match is required.
    >
    > **Multi-word keywords** (e.g., "choose between", "sign off", "merge vs close") must be matched as phrases, not individual words. "sign off" matches "sign off on the design" but not "sign the certificate".
 
@@ -149,7 +149,7 @@ You **MUST** consider the user input before proceeding (if not empty).
       - Apply phase context bonus from step (a)
       - External agents: also check the agent's `description` and `tools` fields for keyword matches
       - External agents: give a small bonus (+1) if the agent's division matches the task's domain
-      - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)` where `raw_score` = keyword match count + phase bonus points. A raw_score of 10+ yields confidence 1.0. The 0.3 threshold means ~3 keyword matches are needed to avoid `[@Unassigned]`.
+      - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)` where `raw_score` = keyword match count + phase/division bonus points. A raw_score of 10+ yields confidence 1.0. The 0.3 threshold corresponds to ~3 raw-score points (keyword matches plus any phase/division bonuses), so a raw_score < 3 results in `[@Unassigned]`.
 
    c. **Select the best match**:
       - Compute scores for external agents first
