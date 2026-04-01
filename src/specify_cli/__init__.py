@@ -2574,6 +2574,126 @@ def check():
         console.print("[dim]Tip: Install an AI assistant for the best experience[/dim]")
 
 @app.command()
+def update(
+    project_path: str = typer.Argument(".", help="Path to the existing Specify project (default: current directory)"),
+    debug: bool = typer.Option(False, "--debug", help="Show verbose diagnostic output"),
+):
+    """Update an existing Specify project with the latest commands and templates.
+
+    Re-scaffolds command files and templates for the configured AI agent,
+    bringing in any new or updated commands without touching specs, constitution,
+    or git history. Reads the agent and script type from .specify/init-options.json.
+
+    Examples:
+        specify update              # Update current directory
+        specify update ./my-project # Update a specific project
+    """
+    show_banner()
+
+    target = Path(project_path).resolve()
+    init_options_path = target / ".specify" / "init-options.json"
+
+    if not init_options_path.exists():
+        console.print("[red]Error:[/red] No .specify/init-options.json found.")
+        console.print("This doesn't look like a Specify project. Run [bold]specify init[/bold] first.")
+        raise typer.Exit(1)
+
+    import json
+    try:
+        options = json.loads(init_options_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        console.print(f"[red]Error:[/red] Could not read init-options.json: {e}")
+        raise typer.Exit(1)
+
+    selected_ai = options.get("ai", "generic")
+    selected_script = options.get("script", "sh")
+
+    console.print(f"[bold]Updating project at:[/bold] {target}")
+    console.print(f"[bold]AI agent:[/bold] {selected_ai}")
+    console.print(f"[bold]Script type:[/bold] {selected_script}")
+    console.print()
+
+    tracker = StepTracker("Update Project")
+
+    # Step 1: Locate command templates
+    tracker.add("locate", "Locate command templates")
+    core = _locate_core_pack()
+    if core and (core / "commands").is_dir():
+        commands_dir = core / "commands"
+    else:
+        repo_root = Path(__file__).parent.parent.parent
+        commands_dir = repo_root / "templates" / "commands"
+
+    if not commands_dir.is_dir():
+        console.print("[red]Error:[/red] Command templates not found.")
+        raise typer.Exit(1)
+
+    tracker.complete("locate", str(commands_dir))
+
+    # Step 2: Register commands for the configured agent using CommandRegistrar
+    tracker.add("commands", "Update agent commands")
+    from .agents import CommandRegistrar
+    registrar = CommandRegistrar()
+
+    # Build command list from source templates
+    commands = []
+    for f in sorted(commands_dir.iterdir()):
+        if f.is_file() and f.suffix == ".md":
+            cmd_name = f"speckit.{f.stem}"
+            commands.append({"name": cmd_name, "file": f.name})
+
+    try:
+        registered = registrar.register_commands(
+            agent_name=selected_ai,
+            commands=commands,
+            source_id="speckit",
+            source_dir=commands_dir,
+            project_root=target,
+        )
+        tracker.complete("commands", f"{len(registered)} commands for {selected_ai}")
+    except Exception as e:
+        console.print(f"\n[red]Error:[/red] Failed to register commands: {e}")
+        if debug:
+            import traceback
+            traceback.print_exc()
+        raise typer.Exit(1)
+
+    # Step 3: Copy command templates to .specify/templates/commands/
+    tracker.add("templates", "Update .specify/templates/commands")
+    dest_commands = target / ".specify" / "templates" / "commands"
+    dest_commands.mkdir(parents=True, exist_ok=True)
+    updated_templates = 0
+    for f in commands_dir.iterdir():
+        if f.is_file() and f.suffix == ".md":
+            dst = dest_commands / f.name
+            shutil.copy2(f, dst)
+            updated_templates += 1
+    tracker.complete("templates", f"{updated_templates} command templates")
+
+    # Step 4: Copy page templates (spec-template, plan-template, etc.)
+    tracker.add("page-templates", "Update page templates")
+    templates_src = commands_dir.parent  # templates/ directory
+    dest_templates = target / ".specify" / "templates"
+    dest_templates.mkdir(parents=True, exist_ok=True)
+    updated_pages = 0
+    for f in templates_src.iterdir():
+        if f.is_file() and f.suffix == ".md" and not f.name.startswith("."):
+            dst = dest_templates / f.name
+            shutil.copy2(f, dst)
+            updated_pages += 1
+    tracker.complete("page-templates", f"{updated_pages} page templates")
+
+    # Step 5: Ensure scripts are executable
+    tracker.add("scripts", "Ensure scripts are executable")
+    ensure_executable_scripts(target, tracker=tracker)
+    tracker.complete("scripts", "done")
+
+    console.print(tracker.render())
+    console.print("\n[bold green]Project updated successfully![/bold green]")
+    console.print(f"[dim]Commands updated for agent: {selected_ai}[/dim]")
+
+
+@app.command()
 def version():
     """Display version and system information."""
     import platform
