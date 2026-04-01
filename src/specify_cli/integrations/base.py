@@ -5,6 +5,8 @@ Provides:
 - ``IntegrationBase`` — abstract base every integration must implement.
 - ``MarkdownIntegration`` — concrete base for standard Markdown-format
   integrations (the common case — subclass, set three class attrs, done).
+- ``TomlIntegration`` — concrete base for TOML-format integrations
+  (Gemini, Tabnine — subclass, set three class attrs, done).
 """
 
 from __future__ import annotations
@@ -206,6 +208,53 @@ class IntegrationBase(ABC):
         manifest.record_existing(rel)
         return dest
 
+    def integration_scripts_dir(self) -> Path | None:
+        """Return path to this integration's bundled ``scripts/`` directory.
+
+        Looks for a ``scripts/`` sibling of the module that defines the
+        concrete subclass (not ``IntegrationBase`` itself).
+        Returns ``None`` if the directory doesn't exist.
+        """
+        import inspect
+
+        cls_file = inspect.getfile(type(self))
+        scripts = Path(cls_file).resolve().parent / "scripts"
+        return scripts if scripts.is_dir() else None
+
+    def install_scripts(
+        self,
+        project_root: Path,
+        manifest: IntegrationManifest,
+    ) -> list[Path]:
+        """Copy integration-specific scripts into the project.
+
+        Copies files from this integration's ``scripts/`` directory to
+        ``.specify/integrations/<key>/scripts/`` in the project.  Shell
+        scripts are made executable.  All copied files are recorded in
+        *manifest*.
+
+        Returns the list of files created.
+        """
+        scripts_src = self.integration_scripts_dir()
+        if not scripts_src:
+            return []
+
+        created: list[Path] = []
+        scripts_dest = project_root / ".specify" / "integrations" / self.key / "scripts"
+        scripts_dest.mkdir(parents=True, exist_ok=True)
+
+        for src_script in sorted(scripts_src.iterdir()):
+            if not src_script.is_file():
+                continue
+            dst_script = scripts_dest / src_script.name
+            shutil.copy2(src_script, dst_script)
+            if dst_script.suffix == ".sh":
+                dst_script.chmod(dst_script.stat().st_mode | 0o111)
+            self.record_file_in_manifest(dst_script, project_root, manifest)
+            created.append(dst_script)
+
+        return created
+
     @staticmethod
     def process_template(
         content: str,
@@ -299,13 +348,11 @@ class IntegrationBase(ABC):
         # 6. Replace __AGENT__
         content = content.replace("__AGENT__", agent_name)
 
-        # 7. Rewrite paths (matches release script's rewrite_paths())
-        content = re.sub(r"(/?)memory/", r".specify/memory/", content)
-        content = re.sub(r"(/?)scripts/", r".specify/scripts/", content)
-        content = re.sub(r"(/?)templates/", r".specify/templates/", content)
-        # Fix double-prefix (same as release script's .specify.specify/ fix)
-        content = content.replace(".specify.specify/", ".specify/")
-        content = content.replace(".specify/.specify/", ".specify/")
+        # 7. Rewrite paths — delegate to the shared implementation in
+        #    CommandRegistrar so extension-local paths are preserved and
+        #    boundary rules stay consistent across the codebase.
+        from specify_cli.agents import CommandRegistrar
+        content = CommandRegistrar.rewrite_project_relative_paths(content)
 
         return content
 
@@ -405,11 +452,184 @@ class MarkdownIntegration(IntegrationBase):
     Subclasses only need to set ``key``, ``config``, ``registrar_config``
     (and optionally ``context_file``).  Everything else is inherited.
 
-    The default ``setup()`` from ``IntegrationBase`` copies templates
-    into the agent's commands directory — which is correct for the
-    standard Markdown case.
+    ``setup()`` processes command templates (replacing ``{SCRIPT}``,
+    ``{ARGS}``, ``__AGENT__``, rewriting paths) and installs
+    integration-specific scripts (``update-context.sh`` / ``.ps1``).
     """
 
-    # MarkdownIntegration inherits IntegrationBase.setup() as-is.
-    # Future stages may add markdown-specific path rewriting here.
-    pass
+    def setup(
+        self,
+        project_root: Path,
+        manifest: IntegrationManifest,
+        parsed_options: dict[str, Any] | None = None,
+        **opts: Any,
+    ) -> list[Path]:
+        templates = self.list_command_templates()
+        if not templates:
+            return []
+
+        project_root_resolved = project_root.resolve()
+        if manifest.project_root != project_root_resolved:
+            raise ValueError(
+                f"manifest.project_root ({manifest.project_root}) does not match "
+                f"project_root ({project_root_resolved})"
+            )
+
+        dest = self.commands_dest(project_root).resolve()
+        try:
+            dest.relative_to(project_root_resolved)
+        except ValueError as exc:
+            raise ValueError(
+                f"Integration destination {dest} escapes "
+                f"project root {project_root_resolved}"
+            ) from exc
+        dest.mkdir(parents=True, exist_ok=True)
+
+        script_type = opts.get("script_type", "sh")
+        arg_placeholder = self.registrar_config.get("args", "$ARGUMENTS") if self.registrar_config else "$ARGUMENTS"
+        created: list[Path] = []
+
+        for src_file in templates:
+            raw = src_file.read_text(encoding="utf-8")
+            processed = self.process_template(raw, self.key, script_type, arg_placeholder)
+            dst_name = self.command_filename(src_file.stem)
+            dst_file = self.write_file_and_record(
+                processed, dest / dst_name, project_root, manifest
+            )
+            created.append(dst_file)
+
+        created.extend(self.install_scripts(project_root, manifest))
+        return created
+
+
+# ---------------------------------------------------------------------------
+# TomlIntegration — TOML-format agents (Gemini, Tabnine)
+# ---------------------------------------------------------------------------
+
+class TomlIntegration(IntegrationBase):
+    """Concrete base for integrations that use TOML command format.
+
+    Mirrors ``MarkdownIntegration`` closely: subclasses only need to set
+    ``key``, ``config``, ``registrar_config`` (and optionally
+    ``context_file``).  Everything else is inherited.
+
+    ``setup()`` processes command templates through the same placeholder
+    pipeline as ``MarkdownIntegration``, then converts the result to
+    TOML format (``description`` key + ``prompt`` multiline string).
+    """
+
+    def command_filename(self, template_name: str) -> str:
+        """TOML commands use ``.toml`` extension."""
+        return f"speckit.{template_name}.toml"
+
+    @staticmethod
+    def _extract_description(content: str) -> str:
+        """Extract the ``description`` value from YAML frontmatter.
+
+        Scans lines between the first pair of ``---`` delimiters for a
+        top-level ``description:`` key.  Returns the value (with
+        surrounding quotes stripped) or an empty string if not found.
+        """
+        in_frontmatter = False
+        for line in content.splitlines():
+            stripped = line.rstrip("\n\r")
+            if stripped == "---":
+                if not in_frontmatter:
+                    in_frontmatter = True
+                    continue
+                break  # second ---
+            if in_frontmatter and stripped.startswith("description:"):
+                _, _, value = stripped.partition(":")
+                return value.strip().strip('"').strip("'")
+        return ""
+
+    @staticmethod
+    def _render_toml(description: str, body: str) -> str:
+        """Render a TOML command file from description and body.
+
+        Uses multiline basic strings (``\"\"\"``) with backslashes
+        escaped, matching the output of the release script.  Falls back
+        to multiline literal strings (``'''``) if the body contains
+        ``\"\"\"``, then to an escaped basic string as a last resort.
+
+        The body is rstrip'd so the closing delimiter appears on the line
+        immediately after the last content line — matching the release
+        script's ``echo "$body"; echo '\"\"\"'`` pattern.
+        """
+        toml_lines: list[str] = []
+
+        if description:
+            desc = description.replace('"', '\\"')
+            toml_lines.append(f'description = "{desc}"')
+            toml_lines.append("")
+
+        body = body.rstrip("\n")
+
+        # Escape backslashes for basic multiline strings.
+        escaped = body.replace("\\", "\\\\")
+
+        if '"""' not in escaped:
+            toml_lines.append('prompt = """')
+            toml_lines.append(escaped)
+            toml_lines.append('"""')
+        elif "'''" not in body:
+            toml_lines.append("prompt = '''")
+            toml_lines.append(body)
+            toml_lines.append("'''")
+        else:
+            escaped_body = (
+                body.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t")
+            )
+            toml_lines.append(f'prompt = "{escaped_body}"')
+
+        return "\n".join(toml_lines) + "\n"
+
+    def setup(
+        self,
+        project_root: Path,
+        manifest: IntegrationManifest,
+        parsed_options: dict[str, Any] | None = None,
+        **opts: Any,
+    ) -> list[Path]:
+        templates = self.list_command_templates()
+        if not templates:
+            return []
+
+        project_root_resolved = project_root.resolve()
+        if manifest.project_root != project_root_resolved:
+            raise ValueError(
+                f"manifest.project_root ({manifest.project_root}) does not match "
+                f"project_root ({project_root_resolved})"
+            )
+
+        dest = self.commands_dest(project_root).resolve()
+        try:
+            dest.relative_to(project_root_resolved)
+        except ValueError as exc:
+            raise ValueError(
+                f"Integration destination {dest} escapes "
+                f"project root {project_root_resolved}"
+            ) from exc
+        dest.mkdir(parents=True, exist_ok=True)
+
+        script_type = opts.get("script_type", "sh")
+        arg_placeholder = self.registrar_config.get("args", "{{args}}") if self.registrar_config else "{{args}}"
+        created: list[Path] = []
+
+        for src_file in templates:
+            raw = src_file.read_text(encoding="utf-8")
+            description = self._extract_description(raw)
+            processed = self.process_template(raw, self.key, script_type, arg_placeholder)
+            toml_content = self._render_toml(description, processed)
+            dst_name = self.command_filename(src_file.stem)
+            dst_file = self.write_file_and_record(
+                toml_content, dest / dst_name, project_root, manifest
+            )
+            created.append(dst_file)
+
+        created.extend(self.install_scripts(project_root, manifest))
+        return created
