@@ -55,7 +55,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 3. **Read configuration**: Read `.specify/init-options.json` from the project root.
    - Extract the `ai` field (identifies the active AI harness — e.g., "claude", "codex", "cursor")
-   - Extract the optional `agent_source` field (filesystem path to an external agent definition directory)
+   - Extract the external agent path: check for `agent_source` field first, then fall back to `ai_commands_dir` for backward compatibility. This is a filesystem path to an external agent definition directory.
    - If `init-options.json` does not exist or cannot be parsed, use defaults: ai = "generic", agent_source = null
 
 4. **Discover available agents** using a two-tier approach:
@@ -83,7 +83,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    ### Tier 2: External Agents (configured, richer definitions)
 
-   If `agent_source` is set in init-options.json:
+   If `agent_source` (or `ai_commands_dir` fallback) is set in init-options.json:
 
    a. Validate the path exists and is a directory. If not:
       - Output a warning: "Agent source path '{path}' not found or not a directory. Falling back to internal agents only."
