@@ -95,40 +95,123 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 6. **Check for merge conflicts** against the target branch:
 
-   Run: `git merge-tree $(git merge-base HEAD main) main HEAD`
-   Or simpler: attempt a dry-run merge and check for conflicts:
+   Run a dry-run merge to detect conflicts:
    ```bash
    git merge --no-commit --no-ff main 2>&1
    MERGE_STATUS=$?
    git merge --abort 2>/dev/null
    ```
 
-   **If conflicts exist** (`MERGE_STATUS != 0`):
-   - List conflicting files:
-     ```
-     ## Merge Conflict Warning
+   **If no conflicts** (`MERGE_STATUS == 0`): proceed silently (no output needed).
 
-     This branch has merge conflicts with main. Review findings may be
-     invalid for conflicted regions — resolve conflicts before relying
-     on review results.
-
-     Conflicting files:
-     - src/api/routes.py
-     - tests/test_auth.py
-
-     **Recommendation**: Rebase or merge main into your branch, resolve
-     conflicts, then re-run `/speckit.review`.
-     ```
-   - **Do NOT stop** — continue with review passes, but:
-     - Add a `### Merge Conflicts: FAIL` section to the review output
-     - Mark the conflicting files so pass findings against those files are flagged as `[CONFLICT ZONE]`
-     - In PR Lifecycle, warn that the PR will not be mergeable until conflicts are resolved
-
-   **If no conflicts**: proceed silently (no output needed)
+   **If conflicts exist** (`MERGE_STATUS != 0`): classify each conflicting file using the Merge Conflict Resolution Protocol below, then continue with review passes.
 
    **Skip this check when**:
    - `--comments-only` is passed (no review passes run)
    - `--post-merge` is passed (already merged)
+
+### Merge Conflict Resolution Protocol
+
+When conflicts are detected, classify each conflicting file into one of four tiers. Apply tiers in order — check Tier 1 first, then Tier 2, etc.
+
+#### Tier 1: Auto-Regenerate (regenerate from source — never manually merge)
+
+These files are derived artifacts. Merging their text is meaningless — regenerate them after resolving all other conflicts.
+
+| Pattern | Action |
+|---------|--------|
+| `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` | Delete the file, run the package manager install command (`npm install`, `yarn install`, `pnpm install`) to regenerate |
+| `poetry.lock`, `Pipfile.lock` | Delete the file, run `poetry lock` or `pipenv lock` to regenerate |
+| `*.schema.json` (generated), `*.min.js`, `*.min.css` | Rebuild from source (`npm run build` or equivalent) |
+| `go.sum` | Run `go mod tidy` |
+
+**Commit message**: `fix(merge): regenerate [filename] after conflict resolution`
+
+#### Tier 2: Auto-Resolve by Owner (one side always wins)
+
+These files have a clear owner. No manual inspection needed.
+
+| Pattern | Strategy | Rationale |
+|---------|----------|-----------|
+| `.specify/scripts/*` | Accept **theirs** (main) | Vendor code — upstream owns it |
+| `.specify/templates/*` | Accept **theirs** (main) | Upstream templates are canonical |
+| `specs/NNN-*/*` (our feature dir) | Accept **ours** (branch) | Our feature artifacts — we own them |
+| Files that exist only on our branch | Accept **ours** | New files we created |
+| `CHANGELOG.md`, `VERSION`, `pyproject.toml` (version only) | Accept **theirs**, then append/update ours on top | Upstream version is the base; our additions go after |
+
+**Resolution commands**:
+```bash
+# Accept theirs for a file:
+git checkout --theirs <file> && git add <file>
+
+# Accept ours for a file:
+git checkout --ours <file> && git add <file>
+```
+
+**Commit message**: `fix(merge): resolve [filename] — accept [theirs|ours] ([rationale])`
+
+#### Tier 3: Auto-Merge with Verification (both sides changed, but in different regions)
+
+When git reports a conflict but the changes are in **non-overlapping regions** of the file (e.g., we added a function at line 50, they modified a function at line 200):
+
+- Apply both changes (accept the union)
+- Run the file through its linter/formatter to verify syntax
+- Run relevant tests to verify correctness
+- If tests pass: commit
+- If tests fail: escalate to Tier 4
+
+**Commit message**: `fix(merge): merge non-overlapping changes in [filename]`
+
+#### Tier 4: Flag for Human Review (overlapping logic, judgment required)
+
+Conflicts that require human judgment. **Never auto-resolve these.**
+
+| Condition | Why |
+|-----------|-----|
+| Same function/method modified on both sides | Intent may conflict |
+| Conflicting imports or dependency versions | Compatibility unknown |
+| Auth, security, or permissions code | Risk too high for auto-resolve |
+| Database schemas or migrations | Data integrity at stake |
+| CI/CD configuration files | Could break the pipeline for everyone |
+| Test assertions that contradict each other | Indicates divergent intent |
+| Any file where both sides changed the same line range | Can't determine correct merge without understanding context |
+
+**Output for Tier 4 conflicts**:
+```
+### Merge Conflicts Requiring Human Review
+
+| File | Lines | Ours | Theirs | Risk |
+|------|-------|------|--------|------|
+| src/api/auth.py | 42-58 | Added rate limiting | Changed token format | HIGH — security code |
+| src/models/user.py | 10-15 | Added email field | Renamed username field | MEDIUM — data model |
+
+**Action required**: Resolve these conflicts manually, then re-run `/speckit.review`.
+```
+
+#### Conflict Resolution Output
+
+After classifying all conflicts, output a summary and record in review.md:
+
+```
+## Merge Conflict Report
+
+**Branch**: [branch] ↔ main
+**Total conflicts**: N files
+
+| File | Tier | Resolution | Status |
+|------|------|------------|--------|
+| package-lock.json | 1 — Regenerate | `npm install` | RESOLVED |
+| .specify/scripts/check.sh | 2 — Accept theirs | Upstream owns | RESOLVED |
+| specs/004-feature/tasks.md | 2 — Accept ours | Our feature | RESOLVED |
+| src/utils/helpers.py | 3 — Auto-merge | Non-overlapping regions | RESOLVED |
+| src/api/auth.py | 4 — Human review | Overlapping security code | PENDING |
+
+**Auto-resolved**: X files | **Pending human review**: Y files
+```
+
+- If any Tier 4 conflicts remain PENDING: add `### Merge Conflicts: FAIL` to the review output. Mark findings against those files as `[CONFLICT ZONE]` in the review passes. Warn in PR Lifecycle that the PR will not be mergeable.
+- If all conflicts are resolved (Tiers 1-3 only): add `### Merge Conflicts: PASS (N conflicts auto-resolved)` and proceed normally. Create a single merge resolution commit before running review passes.
+- If no conflicts existed: `### Merge Conflicts: PASS`
 
 ## Comments-Only Mode
 

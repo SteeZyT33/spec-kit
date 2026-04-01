@@ -203,6 +203,30 @@ class TestReviewCommandContent:
         assert "--comments-only" in content, "Must mention skipping conflict check for --comments-only"
         assert "--post-merge" in content, "Must mention skipping conflict check for --post-merge"
 
+    def test_has_merge_conflict_resolution_tiers(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Tier 1" in content, "Must have Tier 1 (Auto-Regenerate)"
+        assert "Tier 2" in content, "Must have Tier 2 (Auto-Resolve by Owner)"
+        assert "Tier 3" in content, "Must have Tier 3 (Auto-Merge with Verification)"
+        assert "Tier 4" in content, "Must have Tier 4 (Flag for Human Review)"
+
+    def test_tier_1_covers_lockfiles(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "package-lock.json" in content, "Tier 1 must handle npm lockfile"
+        assert "poetry.lock" in content, "Tier 1 must handle poetry lockfile"
+
+    def test_tier_2_has_ownership_rules(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Accept **theirs**" in content, "Tier 2 must define accept-theirs strategy"
+        assert "Accept **ours**" in content, "Tier 2 must define accept-ours strategy"
+        assert ".specify/scripts" in content, "Tier 2 must cover vendor scripts"
+
+    def test_tier_4_flags_security_code(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        lower = content.lower()
+        assert "auth" in lower and "security" in lower, "Tier 4 must flag security-sensitive conflicts"
+        assert "human review" in lower, "Tier 4 must require human review"
+
     def test_no_unresolved_placeholders(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
         # {SCRIPT} and {ARGS} are legitimate spec-kit placeholders used by CommandRegistrar
