@@ -1,5 +1,5 @@
 ---
-description: Invoke a cross-harness review using a different AI agent to adversarially review completed work
+description: Invoke a cross-harness adversarial review at any pipeline stage — validates design artifacts (post-tasks) or code changes (post-review) using a different AI harness.
 scripts:
   sh: scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
   ps: scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
@@ -7,6 +7,12 @@ handoffs:
   - label: Run Standard Review
     agent: speckit.review
     prompt: Run the standard review passes on the current phase
+  - label: Implement Project
+    agent: speckit.implement
+    prompt: Start the implementation in phases
+  - label: Assign Agents
+    agent: speckit.assign
+    prompt: Assign agents to tasks before implementation
 ---
 
 ## User Input
@@ -22,6 +28,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Parse arguments** from user input:
+   - `--scope design|code`: Explicitly set review scope (see step 5 for auto-detection)
    - `--phase N`: Review a specific phase (default: latest completed phase from tasks.md)
    - Any remaining text: Additional review focus or instructions for the reviewer
 
@@ -49,23 +56,67 @@ You **MUST** consider the user input before proceeding (if not empty).
    Then stop.
 
 5. **Determine the review scope**:
+
+   If `--scope` was explicitly passed, use that value. Otherwise, auto-detect:
+
+   a. Run `git diff --merge-base --name-only main HEAD` to check for code changes
+   b. **If no code changes exist** (or only spec artifacts changed): scope = `design`
+   c. **If code changes exist**: scope = `code`
+
+   Then load context based on scope:
+
+   ### Scope: `design` (post-tasks, pre-implement)
+
+   Review design artifacts — catch gaps before writing code.
+   - **REQUIRED**: Read spec.md (acceptance criteria, user stories, FRs)
+   - **REQUIRED**: Read plan.md (architecture decisions, tech stack, file structure)
+   - **REQUIRED**: Read tasks.md (task breakdown, phasing, dependencies)
+   - **IF EXISTS**: Read data-model.md (entities, relationships)
+   - **IF EXISTS**: Read contracts/ (API specs, interface definitions)
+   - **IF EXISTS**: Read research.md (technical decisions, alternatives considered)
+
+   ### Scope: `code` (post-implement or post-review)
+
+   Review implemented code — find bugs, security issues, spec drift.
    - Read tasks.md to identify the target phase and its tasks
    - Read spec.md for acceptance criteria relevant to the phase
    - Read plan.md for architecture decisions
    - Run `git diff --merge-base --name-only main HEAD` to get the list of changed files
-   - If no files changed, report "No changes to review against main" and stop
+   - If no files changed in code scope, report "No code changes to review against main. Use `--scope design` to review design artifacts." and stop
 
-6. **Compute the diff** (externally — the reviewer reads a patch file, does not run git):
+6. **Compute review input** based on scope:
+
+   ### For `code` scope:
    ```bash
    git diff --merge-base main HEAD --no-ext-diff --unified=3 --no-color > FEATURE_DIR/.crossreview.patch
    git diff --merge-base --name-only main HEAD > FEATURE_DIR/.crossreview-files.txt
    ```
 
+   ### For `design` scope:
+   Concatenate the design artifacts into a single review document:
+   ```bash
+   echo "# Design Artifacts for Review" > FEATURE_DIR/.crossreview.patch
+   echo "" >> FEATURE_DIR/.crossreview.patch
+   for doc in spec.md plan.md tasks.md data-model.md research.md; do
+     if [ -f "FEATURE_DIR/$doc" ]; then
+       echo "---" >> FEATURE_DIR/.crossreview.patch
+       echo "## $doc" >> FEATURE_DIR/.crossreview.patch
+       cat "FEATURE_DIR/$doc" >> FEATURE_DIR/.crossreview.patch
+       echo "" >> FEATURE_DIR/.crossreview.patch
+     fi
+   done
+   echo "spec.md plan.md tasks.md" > FEATURE_DIR/.crossreview-files.txt
+   ```
+
 7. **Build the review prompt** — write to `FEATURE_DIR/.crossreview-prompt.md`:
 
-   # Cross-Harness Adversarial Review
+   Select the prompt based on scope:
 
-   You are reviewing work done by a DIFFERENT AI agent. Your job is to be
+   ### Prompt for `code` scope:
+
+   # Cross-Harness Adversarial Review — Code
+
+   You are reviewing code written by a DIFFERENT AI agent. Your job is to be
    adversarial — assume the implementing agent has blind spots and find them.
 
    ## Review Checklist
@@ -104,7 +155,48 @@ You **MUST** consider the user input before proceeding (if not empty).
    Only blocking issues should be things that MUST be fixed before merge.
    Non-blocking issues are improvements worth noting but not merge-gating.
 
-   Fill in the bracketed sections with actual content from spec.md, plan.md, and the files list. Do not leave placeholders.
+   ### Prompt for `design` scope:
+
+   # Cross-Harness Adversarial Review — Design
+
+   You are reviewing a feature design (spec, plan, and task breakdown) produced by
+   a DIFFERENT AI agent. Your job is to find gaps, contradictions, and risks BEFORE
+   any code is written — this is the cheapest place to catch mistakes.
+
+   ## Review Checklist
+   - Completeness: are all user stories from the spec covered by tasks?
+   - Task ordering: do dependencies make sense? Are blocking tasks identified?
+   - Scope alignment: do the tasks match the spec, or is there scope creep/drift?
+   - Architecture fitness: does the plan's tech stack and structure support the spec requirements?
+   - Missing concerns: security, error handling, edge cases, performance, accessibility
+   - Testability: can each phase be independently verified?
+   - Data model: do entities and relationships support all user stories?
+   - Risk areas: which tasks are underspecified or likely to cause rework?
+
+   ## Design Artifacts
+   [the artifacts are included at the end of this prompt]
+
+   ## Additional Focus
+   [insert any additional text from user arguments, or "None" if empty]
+
+   ## Instructions
+   Read the design artifacts at the end of this prompt. Focus on substance —
+   things that will cause rework, missed requirements, or broken implementations
+   if not caught now.
+
+   Return your findings as JSON with this exact structure:
+   ```json
+   {
+     "summary": "one-paragraph summary of design quality and readiness",
+     "blocking": [{"file": "artifact.md", "issue": "description", "fix": "suggestion"}],
+     "non_blocking": [{"file": "artifact.md", "issue": "description", "fix": "suggestion"}]
+   }
+   ```
+
+   Blocking issues are things that MUST be resolved before implementation starts.
+   Non-blocking issues are improvements worth noting but not implementation-gating.
+
+   Fill in the bracketed sections with actual content. Do not leave placeholders.
 
 8. **Write the output schema** to `FEATURE_DIR/.crossreview.schema.json` by copying from `.specify/templates/crossreview.schema.json`.
 
@@ -132,8 +224,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 12. **Present findings** to the user:
 
     ```markdown
-    ## Cross-Harness Review — {harness} ({model})
+    ## Cross-Harness Review — {harness} ({model}) [{scope}]
 
+    **Scope**: {design|code}
     **Phase**: Phase N — [phase name]
     **Reviewer**: {harness} ({model}, effort: {effort})
 
@@ -152,6 +245,9 @@ You **MUST** consider the user input before proceeding (if not empty).
     ```
 
     If no blocking issues: "No blocking issues found. Cross-review passed."
+
+    For `design` scope, additionally suggest: "Design review passed. Proceed with `/speckit.assign` or `/speckit.implement`."
+    For `code` scope with blocking issues, suggest: "Address blocking issues before merge."
 
 13. **Append to review.md** in FEATURE_DIR under a `### Cross-Harness Review` section using the same format as step 12.
 

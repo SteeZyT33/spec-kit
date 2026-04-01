@@ -11,6 +11,9 @@ handoffs:
   - label: Continue Implementation
     agent: speckit.implement
     prompt: Continue to the next implementation phase
+  - label: Cross-Harness Code Review (optional)
+    agent: speckit.crossreview
+    prompt: Run a cross-harness adversarial review of the implemented code
   - label: Re-Analyze Artifacts
     agent: speckit.analyze
     prompt: Re-analyze spec artifacts after review changes

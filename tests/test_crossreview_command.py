@@ -57,7 +57,7 @@ class TestCrossreviewFrontmatter:
     def test_has_handoffs(self):
         fm = _parse_frontmatter(_CROSSREVIEW_CMD)
         assert "handoffs" in fm
-        assert len(fm["handoffs"]) >= 1
+        assert len(fm["handoffs"]) >= 3, "Must have handoffs to review, implement, and assign"
 
 
 class TestCrossreviewContent:
@@ -102,6 +102,76 @@ class TestCrossreviewContent:
         content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
         assert "review.md" in content
         assert "Cross-Harness Review" in content
+
+
+class TestCrossreviewScopeAwareness:
+    """Verify crossreview supports design and code scopes."""
+
+    def test_has_scope_flag(self):
+        content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
+        assert "--scope" in content
+        assert "design" in content
+        assert "code" in content
+
+    def test_has_design_scope_section(self):
+        content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
+        assert "Scope: `design`" in content or "### Scope: `design`" in content
+        assert "pre-implement" in content.lower() or "post-tasks" in content.lower()
+
+    def test_has_code_scope_section(self):
+        content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
+        assert "Scope: `code`" in content or "### Scope: `code`" in content
+        assert "post-implement" in content.lower() or "post-review" in content.lower()
+
+    def test_design_scope_reviews_artifacts(self):
+        content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
+        assert "spec.md" in content
+        assert "plan.md" in content
+        assert "tasks.md" in content
+
+    def test_design_prompt_has_completeness_check(self):
+        content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
+        lower = content.lower()
+        assert "completeness" in lower
+        assert "task ordering" in lower or "dependencies" in lower
+
+    def test_code_prompt_has_security_check(self):
+        content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
+        lower = content.lower()
+        assert "security" in lower
+        assert "owasp" in lower
+
+    def test_auto_detection_logic(self):
+        content = _CROSSREVIEW_CMD.read_text(encoding="utf-8")
+        lower = content.lower()
+        assert "auto-detect" in lower or "auto detect" in lower
+
+
+class TestCrossreviewHandoffs:
+    """Verify crossreview is offered at multiple pipeline stages."""
+
+    def test_tasks_command_offers_crossreview(self):
+        tasks_cmd = _REPO_ROOT / "templates" / "commands" / "tasks.md"
+        fm = _parse_frontmatter(tasks_cmd)
+        agents = [h["agent"] for h in fm["handoffs"]]
+        assert "speckit.crossreview" in agents, (
+            "tasks.md must offer crossreview as a handoff"
+        )
+
+    def test_review_command_offers_crossreview(self):
+        review_cmd = _REPO_ROOT / "templates" / "commands" / "review.md"
+        fm = _parse_frontmatter(review_cmd)
+        agents = [h["agent"] for h in fm["handoffs"]]
+        assert "speckit.crossreview" in agents, (
+            "review.md must offer crossreview as a handoff"
+        )
+
+    def test_crossreview_offers_implement(self):
+        fm = _parse_frontmatter(_CROSSREVIEW_CMD)
+        agents = [h["agent"] for h in fm["handoffs"]]
+        assert "speckit.implement" in agents, (
+            "crossreview must offer implement as a handoff"
+        )
 
 
 class TestCrossreviewSchema:

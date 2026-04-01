@@ -86,7 +86,7 @@ class TestReviewCommandFrontmatter:
             "speckit.specify", "speckit.plan", "speckit.tasks",
             "speckit.implement", "speckit.analyze", "speckit.clarify",
             "speckit.checklist", "speckit.review", "speckit.constitution",
-            "speckit.taskstoissues",
+            "speckit.taskstoissues", "speckit.crossreview",
         }
         for handoff in fm["handoffs"]:
             assert handoff["agent"] in valid_agents, (
