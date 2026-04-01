@@ -100,7 +100,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    c. Build the external agent catalog: a list of agents with name, description, tools/capabilities, and division.
 
-   **Priority**: When both tiers are available, external agents take priority for matching. Internal agents serve as fallback for tasks that don't match any external agent.
+   **Priority**: Evaluate external agents first. Use internal agents only if no external agent achieves a non-zero keyword match score.
 
 5. **Read and parse tasks.md**:
    - Load tasks.md from FEATURE_DIR
@@ -113,9 +113,10 @@ You **MUST** consider the user input before proceeding (if not empty).
      - The phase/section the task belongs to (from the heading structure)
 
 6. **Determine which tasks need assignment**:
-   - If REASSIGN_ALL is true: strip all existing `[@...]` annotations from all task lines — every task gets reassigned
-   - If REASSIGN_ALL is false: skip any task that already has an `[@...]` annotation (preserve manual edits and previous assignments)
-   - Tasks without `[@...]` annotations are candidates for assignment
+   - If REASSIGN_ALL is true: strip all existing `[@...]` annotations from all unchecked task lines — every unchecked task gets reassigned
+   - If REASSIGN_ALL is false: skip any unchecked task that already has an `[@...]` annotation (preserve manual edits and previous assignments)
+   - Among unchecked tasks, those without `[@...]` annotations are candidates for assignment
+   - Completed tasks (`- [x]` / `- [X]`) are never modified by this command
 
 7. **Match agents to tasks** using heuristic keyword matching:
 
@@ -135,9 +136,10 @@ You **MUST** consider the user input before proceeding (if not empty).
       - External agents: give a small bonus if the agent's division matches the task's domain (e.g., `engineering/` division + backend task)
 
    c. **Select the best match**:
-      - Pick the agent with the highest keyword overlap
-      - If tied, prefer external agents over internal ones (richer definitions)
-      - If no agent has any keyword overlap, assign `[@Unassigned]`
+      - Compute scores for external agents first
+      - If any external agent has a score > 0, pick the highest-scoring external agent
+      - Otherwise, compute scores for internal agents and pick the highest-scoring one
+      - If no agent (external or internal) has any keyword overlap, assign `[@Unassigned]`
 
 8. **Write annotations back to tasks.md**:
    - For each assigned task, insert the `[@Agent Name]` annotation into the task line
@@ -216,7 +218,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 When `/speckit.review` runs after implementation, it can read the `[@Agent Name]` annotations in tasks.md to understand which agent was assigned to each task. This enables:
 
-- **"Don't review your own work"**: If `[@Backend Architect]` was assigned to implement a task, the review command can suggest a different agent (e.g., Security Engineer, Code Reviewer) for reviewing that task's output.
+- **"Don't review your own work"**: If `[@Backend Architect]` was assigned to implement a task, the review command can suggest a different agent (e.g., Security Engineer, Evidence Collector) for reviewing that task's output.
 - **Review pass matching**: The security review pass can reference whether a security specialist was assigned to security-related tasks.
 
 The `@` annotations are informational hints — the review command works identically with or without them. Agent assignment is purely additive.
