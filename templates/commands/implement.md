@@ -144,14 +144,14 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    Before executing any task that has dependencies (as identified in tasks.md dependency chain):
 
-   a. **Check for dependency completion signals**: Scan `FEATURE_DIR/inbox/` for files matching `*-COMPLETE-*.md`. For each dependency task, look for a COMPLETE message containing that task's ID. If found, read the message for:
+   a. **Check for dependency completion signals**: Scan `FEATURE_DIR/inbox/` for files matching `*-COMPLETE-*.md`. For each dependency task, parse each message's frontmatter and match the `task_id` field by exact equality (not substring — e.g., `T01` must not match `T010`). If found, read the message for:
       - Summary of what was built
       - Deviations from plan (adapt your approach if needed)
       - Decisions that affect your task
 
    b. **Check for unresolved escalations**: List `ESC-*.md` files and check for matching `RES-ESC-*.md`. If unresolved escalations exist that are addressed to your role or affect your task, surface them before proceeding.
 
-   c. **Cross-feature check** (if `FEATURE_DIR/concurrent/` exists with symlinks): Follow each valid symlink in `concurrent/` and scan the linked feature's `inbox/` for `*-CROSS-*.md` files. Read only CROSS-type messages — ignore all other message types from concurrent features. Report any cross-feature messages that affect shared code or interfaces relevant to your current task. If a symlink is broken (target doesn't exist), report a warning and skip it.
+   c. **Cross-feature check** (if `FEATURE_DIR/concurrent/` exists with symlinks): For each symlink in `FEATURE_DIR/concurrent/`, resolve its target to an absolute path and only follow it if the resolved target remains within the repository's `specs/` directory. If the target is outside this tree, warn and skip. For each valid symlink target, scan the linked feature's `inbox/` for `*-CROSS-*.md` files. Read only CROSS-type messages — ignore all other message types from concurrent features. Report any cross-feature messages that affect shared code or interfaces relevant to your current task. If a symlink is broken (target doesn't exist), report a warning and skip it.
 
    If `FEATURE_DIR/inbox/` does not exist, skip this step entirely.
 

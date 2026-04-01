@@ -70,7 +70,7 @@ class TestInboxMessageTemplate:
             assert msg_type in inbox_template, f"Missing message type: {msg_type}"
 
     def test_has_message_frontmatter_schema(self, inbox_template):
-        required_fields = ["type:", "sender:", "recipient:", "timestamp:", "task_id:"]
+        required_fields = ["type:", "sender:", "recipient:", "timestamp:", "task_id:", "phase:"]
         for field in required_fields:
             assert field in inbox_template, f"Missing frontmatter field: {field}"
 

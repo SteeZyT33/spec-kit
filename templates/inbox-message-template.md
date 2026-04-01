@@ -31,7 +31,7 @@ type: COMPLETE | INFO | ESCALATE | RESOLVE | HANDOFF | REVIEW | CROSS
 sender: "[agent name from Spec 002 assignment, or task ID if no assignment]"
 recipient: "[agent name/role, task ID, or 'all']"
 timestamp: "YYYY-MM-DDTHH:MM:SS"
-task_id: "[T###]"
+task_id: "T###"
 phase: "[Phase N name]"
 references: "[optional: ESC-NNN for RESOLVE, review.md section for REVIEW]"
 ---
@@ -39,7 +39,7 @@ references: "[optional: ESC-NNN for RESOLVE, review.md section for REVIEW]"
 
 ## Message Body
 
-The body follows the frontmatter. Keep messages **concise** — summaries, not transcripts. File references are fine; inline code blocks are not.
+The body follows the frontmatter. Keep messages **concise** — summaries, not transcripts. File references are encouraged; short code snippets and fenced code blocks are allowed when necessary (e.g., API response formats), but avoid large code dumps or full transcripts.
 
 ## Message Types
 
