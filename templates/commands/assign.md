@@ -85,7 +85,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Extract the external agent path: check for `agent_source` field first, then fall back to `ai_commands_dir` for backward compatibility. This is a filesystem path to an external agent definition directory.
    - If `init-options.json` does not exist or cannot be parsed, use defaults: ai = "generic", agent_source = null
 
-4. **Discover available agents** using a two-tier approach:
+5. **Discover available agents** using a two-tier approach:
 
    ### Tier 1: Internal Agents (zero-config, always available)
 
@@ -134,7 +134,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    **Priority**: Evaluate external agents first. Use internal agents only if no external agent achieves a non-zero keyword match score.
 
-5. **Read and parse tasks.md**:
+6. **Read and parse tasks.md**:
    - Load tasks.md from FEATURE_DIR
    - Identify task lines: lines matching the pattern `- [ ] T\d+` (checkbox + task ID)
    - For each task line, extract:
@@ -144,18 +144,18 @@ You **MUST** consider the user input before proceeding (if not empty).
      - The task description text (everything after the markers)
      - The phase/section the task belongs to (from the heading structure)
 
-6. **Determine which tasks need assignment**:
+7. **Determine which tasks need assignment**:
    - If REASSIGN_ALL is true: strip all existing `[@...]` annotations from all unchecked task lines — every unchecked task gets reassigned
    - If REASSIGN_ALL is false: skip any unchecked task that already has an `[@...]` annotation (preserve manual edits and previous assignments)
    - Among unchecked tasks, those without `[@...]` annotations are candidates for assignment
    - Completed tasks (`- [x]` / `- [X]`) are never modified by this command
 
-7. **Apply `--human-tasks` pre-assignments** (if flag was provided):
+8. **Apply `--human-tasks` pre-assignments** (if flag was provided):
    - Parse the task ID list (ranges like `T003-T009` and comma-separated like `T003,T015`)
    - For each task ID: if it exists in the candidate list, assign `[@Human Lead]` immediately. If it does not exist in tasks.md (typo or wrong ID), warn: `"Warning: T099 not found in tasks.md — skipping"`
    - Remove successfully assigned tasks from the candidate list — they skip agent matching entirely
 
-8. **Match agents to tasks** using heuristic keyword matching:
+9. **Match agents to tasks** using heuristic keyword matching:
 
    For each remaining candidate task:
 
@@ -182,7 +182,7 @@ You **MUST** consider the user input before proceeding (if not empty).
       - If the best match has **confidence < 0.3** (weak match), assign `[@Unassigned]` instead and flag for manual review
       - If no agent has any keyword overlap, assign `[@Unassigned]`
 
-9. **Dependency analysis** (post-assignment):
+10. **Dependency analysis** (post-assignment):
 
    After all tasks are assigned, scan the dependency chain in tasks.md:
    - For each task that depends on another (sequential ordering, explicit "depends on" notes, or same-file constraints)
