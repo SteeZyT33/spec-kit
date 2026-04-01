@@ -51,9 +51,36 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. **Check for `--reassign-all` flag**: If the user passed `--reassign-all` (or similar intent in `$ARGUMENTS`), set REASSIGN_ALL = true. Otherwise REASSIGN_ALL = false.
+2. **Parse flags from user input**:
+   - `--reassign-all`: Set REASSIGN_ALL = true (clear all existing annotations, reassign from scratch)
+   - `--human-tasks "T003-T009,T015"`: Pre-mark specific tasks for `[@Human Lead]` assignment. Supports ranges (T003-T009) and comma-separated lists. These tasks skip agent matching entirely.
+   - `--force`: Bypass context detection and proceed with assignment regardless of task count or worktree status.
+   - Any remaining text: Additional context or instruction for the assignment heuristic (e.g., "focus on security-heavy assignments")
 
-3. **Read configuration**: Read `.specify/init-options.json` from the project root.
+3. **Context detection — should this spec use assign?**
+
+   Before running the scoring logic, evaluate whether assignment adds value for this spec:
+
+   a. **Count tasks**: Read tasks.md and count lines matching `- [ ] T\d+`.
+   b. **Check for active worktrees**: Run `git worktree list` and check for entries in `.claude/worktrees/` that correspond to this feature. If worktrees exist, this is a parallel dispatch scenario.
+   c. **Evaluate**:
+      - If `--force` was passed: skip context detection entirely, proceed to step 4.
+      - If task count >= 30 OR phases >= 4: proceed to step 4 (large specs benefit from assignment even sequentially).
+      - If active worktrees exist for this feature: proceed to step 4 in parallel dispatch mode.
+      - If task count < 15 AND no active worktrees AND no `--force`:
+        ```
+        ## Skip Recommendation
+
+        This spec has [N] tasks in [M] phases with no parallel worktrees active.
+        Agent assignment adds overhead without value for single-agent sequential execution.
+
+        **Recommendation**: Skip `/speckit.assign` and proceed directly to `/speckit.implement`.
+
+        To override: `/speckit.assign --force`
+        ```
+        Then stop. Do not proceed to scoring.
+
+4. **Read configuration**: Read `.specify/init-options.json` from the project root.
    - Extract the `ai` field (identifies the active AI harness — e.g., "claude", "codex", "cursor")
    - Extract the external agent path: check for `agent_source` field first, then fall back to `ai_commands_dir` for backward compatibility. This is a filesystem path to an external agent definition directory.
    - If `init-options.json` does not exist or cannot be parsed, use defaults: ai = "generic", agent_source = null
@@ -66,6 +93,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    | Agent Name | Specialization Keywords |
    |------------|------------------------|
+   | Human Lead | triage, decide, evaluate, choose between, audit for value, salvage or discard, merge vs close, keep or delete, review conflicting, resolve conflict, approve, sign off, judgment, manual, subjective, ambiguous |
    | Backend Architect | backend, API, database, server, endpoint, REST, GraphQL, migration, schema, model, service, middleware |
    | Frontend Developer | frontend, UI, component, React, Vue, Angular, CSS, HTML, page, layout, form, button, modal, responsive |
    | Security Engineer | security, auth, authentication, authorization, OAuth, OWASP, encryption, secrets, RBAC, permissions, CORS, CSRF, XSS, SQL injection, input validation |
@@ -80,6 +108,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    | SRE | reliability, SLO, SLI, observability, incident, alert, chaos, toil, on-call |
 
    These are the **internal agents**. They are always available regardless of configuration.
+
+   > **`[@Human Lead]`** is a special agent type representing tasks that require human judgment. It is never auto-assigned via external agent matching — keyword detection is the only trigger.
+   >
+   > **Multi-word keywords** (e.g., "choose between", "sign off", "merge vs close") must be matched as phrases, not individual words. "sign off" matches "sign off on the design" but not "sign the certificate".
 
    ### Tier 2: External Agents (configured, richer definitions)
 
@@ -118,30 +150,51 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Among unchecked tasks, those without `[@...]` annotations are candidates for assignment
    - Completed tasks (`- [x]` / `- [X]`) are never modified by this command
 
-7. **Match agents to tasks** using heuristic keyword matching:
+7. **Apply `--human-tasks` pre-assignments** (if flag was provided):
+   - Parse the task ID list (ranges like `T003-T009` and comma-separated like `T003,T015`)
+   - For each task ID: if it exists in the candidate list, assign `[@Human Lead]` immediately. If it does not exist in tasks.md (typo or wrong ID), warn: `"Warning: T099 not found in tasks.md — skipping"`
+   - Remove successfully assigned tasks from the candidate list — they skip agent matching entirely
 
-   For each candidate task:
+8. **Match agents to tasks** using heuristic keyword matching:
+
+   For each remaining candidate task:
 
    a. **Extract matching signals**:
       - Keywords from the task description (split into meaningful terms)
-      - Phase context from the section heading:
-        - "Setup" or "Foundational" → favor infrastructure/DevOps agents
+      - Phase context from the section heading — apply **phase context weighting**:
+        - "Setup" or "Foundational" → +2 bonus for infrastructure/DevOps agents
+        - "Audit", "Triage", "Content Review" → +3 bonus for `[@Human Lead]`
         - "User Story" phases → favor domain-appropriate agents based on task content
-        - "Polish" or "Cross-Cutting" → favor QA/documentation agents
+        - "Polish", "Cross-Cutting", "Verification" → +2 bonus for QA/documentation agents
       - File paths mentioned in the task (e.g., `src/frontend/` → frontend, `tests/` → testing, `src/api/` → backend)
 
-   b. **Score candidates** (simple keyword overlap):
+   b. **Score candidates** (keyword overlap + phase weighting):
       - For each available agent, count how many of the agent's specialization keywords appear in the task description + file path + phase context
+      - Apply phase context bonus from step (a)
       - External agents: also check the agent's `description` and `tools` fields for keyword matches
-      - External agents: give a small bonus if the agent's division matches the task's domain (e.g., `engineering/` division + backend task)
+      - External agents: give a small bonus (+1) if the agent's division matches the task's domain
+      - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)`
 
    c. **Select the best match**:
       - Compute scores for external agents first
-      - If any external agent has a score > 0, pick the highest-scoring external agent
+      - If any external agent has confidence > 0.0, pick the highest-scoring external agent
       - Otherwise, compute scores for internal agents and pick the highest-scoring one
-      - If no agent (external or internal) has any keyword overlap, assign `[@Unassigned]`
+      - If the best match has **confidence < 0.3** (weak match), assign `[@Unassigned]` instead and flag for manual review
+      - If no agent has any keyword overlap, assign `[@Unassigned]`
 
-8. **Write annotations back to tasks.md**:
+9. **Dependency analysis** (post-assignment):
+
+   After all tasks are assigned, scan the dependency chain in tasks.md:
+   - For each task that depends on another (sequential ordering, explicit "depends on" notes, or same-file constraints)
+   - If dependent tasks are assigned to **different agent types**, flag the handoff:
+     ```
+     ### Dependency Handoff Warnings
+     - T004 [@Backend Architect] → T005 [@Frontend Developer]: handoff across agent types (shared file: src/api/routes.ts)
+     - T012 [@Human Lead] → T013 [@DevOps Automator]: human decision gates automation work
+     ```
+   - This is advisory — no reassignment is made, but it surfaces coupling for manual review
+
+10. **Write annotations back to tasks.md**:
    - For each assigned task, insert the `[@Agent Name]` annotation into the task line
    - Placement: after existing markers (`[P]`, `[US1]`, etc.) and before the task description text
    - Example transformation:
@@ -150,9 +203,9 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Preserve all existing formatting, checkboxes, markers, and descriptions exactly
    - Write the updated tasks.md back to disk
 
-9. **Report results**:
+11. **Report results**:
 
-   Output a summary table:
+   Output a summary table with confidence scores:
 
    ```text
    ## Agent Assignment Report
@@ -160,24 +213,29 @@ You **MUST** consider the user input before proceeding (if not empty).
    **Feature**: [feature name]
    **Agent Source**: Internal only | Internal + External ({path})
    **Mode**: Fresh assignment | Reassign all
+   **Human-tasks pre-assigned**: T003-T009 (or "none")
 
-   | Agent | Tasks Assigned | Source |
-   |-------|---------------|--------|
-   | Frontend Developer | 5 | internal |
-   | Backend Architect | 8 | external |
-   | Security Engineer | 2 | internal |
-   | [@Unassigned] | 1 | - |
+   | Task | Agent | Confidence | Source | Note |
+   |------|-------|-----------|--------|------|
+   | T001 | [@DevOps Automator] | 0.80 | internal | |
+   | T003 | [@Human Lead] | — | pre-assigned | --human-tasks flag |
+   | T012 | [@Security Engineer] | 0.92 | external | |
+   | T015 | [@Unassigned] | 0.18 | — | weak match — manual review |
 
-   **Total**: X tasks | Assigned: Y | Skipped (existing): Z | Unassigned: W
+   ### Summary
+   **Total**: X tasks | Assigned: Y | Human: H | Skipped (existing): Z | Unassigned: W
 
    Tasks.md updated at: {absolute path}
    ```
 
-   If any tasks were unassigned, list them with a suggestion:
+   If any tasks were unassigned or low-confidence, list them:
    ```text
-   ### Unassigned Tasks (manual assignment recommended)
-   - T015: "Implement custom analytics dashboard" — no matching specialist found
+   ### Low-Confidence & Unassigned Tasks (manual review recommended)
+   - T015 (0.18): "Implement custom analytics dashboard" — best match was [@Frontend Developer] but confidence too low
+   - T042 (0.00): "Decide whether to merge or close PR #124" — no matching specialist
    ```
+
+   If dependency handoff warnings exist, include them (from step 9).
 
    If any agent definition files were skipped during discovery, list warnings:
    ```text
@@ -185,7 +243,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Skipped: /path/to/file.md — missing 'name' in frontmatter
    ```
 
-10. **Check for extension hooks**: After reporting, check if `.specify/extensions.yml` exists in the project root.
+12. **Check for extension hooks**: After reporting, check if `.specify/extensions.yml` exists in the project root.
     - If it exists, read it and look for entries under the `hooks.after_assign` key
     - If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
     - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
@@ -237,12 +295,17 @@ The `[@Agent Name]` format is the standard convention for agent role annotations
 ## Quick Reference
 
 ```bash
-# Assign agents to tasks (zero-config, uses harness built-in agents)
+# Assign agents to tasks (will recommend skipping for small single-agent specs)
 /speckit.assign
 
-# Assign agents using an external agent library
-# First: add "agent_source": "/path/to/agents" to .specify/init-options.json
-/speckit.assign
+# Force assignment even when context detection recommends skipping
+/speckit.assign --force
+
+# Pre-mark human judgment tasks before auto-assignment
+/speckit.assign --human-tasks "T003-T009,T015"
+
+# Combine: force + human pre-marks
+/speckit.assign --force --human-tasks "T003-T009"
 
 # Reassign all tasks from scratch (clears existing annotations)
 /speckit.assign --reassign-all
