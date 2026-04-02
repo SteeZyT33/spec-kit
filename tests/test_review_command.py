@@ -18,6 +18,7 @@ _REVIEW_CMD = _REPO_ROOT / "templates" / "commands" / "review.md"
 _REVIEW_TEMPLATE = _REPO_ROOT / "templates" / "review-template.md"
 _IMPLEMENT_CMD = _REPO_ROOT / "templates" / "commands" / "implement.md"
 _ANALYZE_CMD = _REPO_ROOT / "templates" / "commands" / "analyze.md"
+_RESOLVE_THREADS_SH = _REPO_ROOT / "scripts" / "bash" / "resolve-pr-threads.sh"
 
 
 def _parse_frontmatter(path: Path) -> dict:
@@ -191,6 +192,7 @@ class TestReviewCommandContent:
     def test_has_thread_resolution(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
         assert "resolveReviewThread" in content, "Must mention thread resolution GraphQL mutation"
+        assert "resolve-pr-threads.sh" in content, "Must reference the thread resolution script"
 
     def test_has_merge_conflict_check(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
@@ -269,3 +271,45 @@ class TestReviewTemplateFrontmatter:
             "Must include post-merge verification section"
         )
         assert "REVERTED" in content, "Must detect silent reversions in post-merge"
+
+
+class TestResolveThreadsScript:
+    """Verify the thread resolution script exists and has required functionality."""
+
+    def test_script_exists(self):
+        assert _RESOLVE_THREADS_SH.exists(), "resolve-pr-threads.sh must exist"
+
+    def test_script_is_executable(self):
+        import os
+        assert os.access(_RESOLVE_THREADS_SH, os.X_OK), "Script must be executable"
+
+    def test_script_has_graphql_query(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "reviewThreads" in content, "Must query review threads via GraphQL"
+        assert "resolveReviewThread" in content, "Must use resolveReviewThread mutation"
+
+    def test_script_checks_comment_response_protocol(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "ADDRESSED" in content, "Must detect ADDRESSED responses"
+        assert "REJECTED" in content, "Must detect REJECTED responses"
+        assert "ISSUED" in content, "Must detect ISSUED responses"
+        assert "CLARIFY" in content, "Must detect CLARIFY responses"
+
+    def test_script_skips_clarify_threads(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        # CLARIFY should not trigger resolution
+        assert "CLARIFY" in content
+        # Check that CLARIFY is counted separately, not resolved
+        assert "left open" in content.lower() or "remain open" in content.lower()
+
+    def test_script_supports_dry_run(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "--dry-run" in content, "Must support --dry-run flag"
+
+    def test_script_supports_explicit_pr(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "--pr" in content, "Must support --pr NUMBER flag"
+
+    def test_script_checks_gh_availability(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "command -v gh" in content, "Must check for gh CLI"

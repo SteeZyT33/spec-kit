@@ -439,10 +439,27 @@ For every ISSUED response, create a GitHub issue containing:
 
 **Step 6: Conversation Thread Resolution**
 
-If branch protection requires conversation resolution before merge, all review threads must be resolved. After responding to all comments:
-- Use `gh api graphql` with `resolveReviewThread` mutation to batch-resolve threads that have been ADDRESSED, REJECTED, or ISSUED
-- Do NOT resolve CLARIFY threads — those await a response
-- If `gh` is unavailable, instruct the user to resolve threads manually in the GitHub UI
+If branch protection requires conversation resolution before merge, all review threads must be resolved. After responding to all comments, invoke the thread resolution script:
+
+```bash
+bash scripts/bash/resolve-pr-threads.sh
+```
+
+This script:
+1. Gets the current branch's PR number via `gh pr view --json number`
+2. Queries all unresolved threads via GraphQL
+3. For each thread, checks if the last reply starts with ADDRESSED, REJECTED, or ISSUED
+4. Batch-resolves matching threads via `resolveReviewThread` mutation
+5. Leaves CLARIFY threads open — those await answers
+6. Reports: "Resolved X/Y threads. Z CLARIFY threads left open."
+
+**Options**:
+- `--pr NUMBER`: Specify PR number explicitly (auto-detects from branch by default)
+- `--dry-run`: Preview what would be resolved without acting
+
+**If `gh` is unavailable**: instruct the user to resolve threads manually in the GitHub UI.
+
+**When to run**: After every Comment Response Protocol pass — both during full review and `--comments-only` mode. Can also be run standalone at any time.
 
 ## Post-Merge Verification
 
