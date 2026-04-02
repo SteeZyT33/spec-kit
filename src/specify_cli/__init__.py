@@ -2677,7 +2677,7 @@ def update(
     dest_templates.mkdir(parents=True, exist_ok=True)
     updated_pages = 0
     for f in templates_src.iterdir():
-        if f.is_file() and f.suffix == ".md" and not f.name.startswith("."):
+        if f.is_file() and f.suffix in {".md", ".json"} and not f.name.startswith("."):
             dst = dest_templates / f.name
             shutil.copy2(f, dst)
             updated_pages += 1

@@ -45,6 +45,7 @@ env/
 *.zip
 sdd-*/
 docs/dev
+.crossreview*
 
 # Extension system
 .specify/extensions/.cache/
