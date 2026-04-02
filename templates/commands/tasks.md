@@ -5,6 +5,9 @@ handoffs:
     agent: speckit.analyze
     prompt: Run a project analysis for consistency
     send: true
+  - label: Cross-Harness Design Review (optional)
+    agent: speckit.crossreview
+    prompt: Run a cross-harness adversarial review of the design artifacts before implementation
   - label: Implement Project
     agent: speckit.implement
     prompt: Start the implementation in phases

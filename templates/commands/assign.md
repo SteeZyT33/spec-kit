@@ -109,7 +109,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    These are the **internal agents**. They are always available regardless of configuration.
 
-   > **`[@Human Lead]`** is a special agent type representing tasks that require human judgment. It is never auto-assigned via external agent matching — keyword detection is the only trigger.
+   > **`[@Human Lead]`** is a special agent type representing tasks that require human judgment. It is assigned **only** when its keyword phrases are detected in the task description. Phase-context bonuses (step 8a) can boost `[@Human Lead]`'s score when keywords are already present, but cannot independently trigger assignment — at least one keyword phrase match is required.
    >
    > **Multi-word keywords** (e.g., "choose between", "sign off", "merge vs close") must be matched as phrases, not individual words. "sign off" matches "sign off on the design" but not "sign the certificate".
 
@@ -176,13 +176,14 @@ You **MUST** consider the user input before proceeding (if not empty).
       - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)`
 
    c. **Select the best match**:
+      - First, check `[@Human Lead]` phrase triggers. If any keyword phrase matches the task description, assign `[@Human Lead]` directly and skip external/internal scoring (unless the task was already pre-assigned via `--human-tasks`)
       - Compute scores for external agents first
       - If any external agent has confidence > 0.0, pick the highest-scoring external agent
       - Otherwise, compute scores for internal agents and pick the highest-scoring one
       - If the best match has **confidence < 0.3** (weak match), assign `[@Unassigned]` instead and flag for manual review
       - If no agent has any keyword overlap, assign `[@Unassigned]`
 
-10. **Dependency analysis** (post-assignment):
+9. **Dependency analysis** (post-assignment):
 
    After all tasks are assigned, scan the dependency chain in tasks.md:
    - For each task that depends on another (sequential ordering, explicit "depends on" notes, or same-file constraints)
@@ -309,6 +310,12 @@ The `[@Agent Name]` format is the standard convention for agent role annotations
 
 # Reassign all tasks from scratch (clears existing annotations)
 /speckit.assign --reassign-all
+
+# Pre-mark human judgment tasks before auto-assignment
+/speckit.assign --human-tasks "T003-T009,T015"
+
+# Combine: reassign all with human pre-marks
+/speckit.assign --reassign-all --human-tasks "T003-T009"
 
 # Assign with specific context
 /speckit.assign focus on security-heavy assignments for this feature

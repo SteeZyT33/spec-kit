@@ -18,6 +18,7 @@ _REVIEW_CMD = _REPO_ROOT / "templates" / "commands" / "review.md"
 _REVIEW_TEMPLATE = _REPO_ROOT / "templates" / "review-template.md"
 _IMPLEMENT_CMD = _REPO_ROOT / "templates" / "commands" / "implement.md"
 _ANALYZE_CMD = _REPO_ROOT / "templates" / "commands" / "analyze.md"
+_RESOLVE_THREADS_SH = _REPO_ROOT / "scripts" / "bash" / "resolve-pr-threads.sh"
 
 
 def _parse_frontmatter(path: Path) -> dict:
@@ -86,7 +87,7 @@ class TestReviewCommandFrontmatter:
             "speckit.specify", "speckit.plan", "speckit.tasks",
             "speckit.implement", "speckit.analyze", "speckit.clarify",
             "speckit.checklist", "speckit.review", "speckit.constitution",
-            "speckit.taskstoissues",
+            "speckit.taskstoissues", "speckit.crossreview",
         }
         for handoff in fm["handoffs"]:
             assert handoff["agent"] in valid_agents, (
@@ -150,6 +151,7 @@ class TestReviewCommandContent:
         assert "--security" in content, "Must document --security flag"
         assert "--phase" in content, "Must document --phase flag"
         assert "--parallel" in content, "Must document --parallel flag"
+        assert "--comments-only" in content, "Must document --comments-only flag"
         assert "init-options.json" in content, "Must reference agent detection"
 
     def test_has_ci_verification(self):
@@ -157,6 +159,80 @@ class TestReviewCommandContent:
         assert "Never modify CI configuration" in content, (
             "Must include specific CI integrity rule"
         )
+
+    def test_has_comments_only_mode(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "## Comments-Only Mode" in content, "Must have Comments-Only Mode section"
+        assert "skip" in content.lower() and "review passes" in content.lower(), (
+            "Comments-only must mention skipping review passes"
+        )
+
+    def test_has_batch_reject(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Batch-Reject" in content or "Batch-reject" in content or "batch-reject" in content, (
+            "Must have batch-reject feature"
+        )
+        assert "review-exclusions.md" in content, "Must reference review-exclusions.md"
+
+    def test_has_post_merge_verification(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Post-Merge Verification" in content, "Must have post-merge verification section"
+        assert "REVERTED" in content, "Must detect silent reversions"
+
+    def test_has_reviewer_profile_awareness(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Reviewer Profile" in content, "Must have reviewer profile awareness"
+        assert "copilot-pull-request-reviewer" in content, "Must mention Copilot reviewer"
+        assert "coderabbitai" in content, "Must mention CodeRabbit reviewer"
+
+    def test_has_ci_debug_structure(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "CI Debug Structure" in content, "Must have CI debug structure for new integrations"
+
+    def test_has_thread_resolution(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "resolveReviewThread" in content, "Must mention thread resolution GraphQL mutation"
+        assert "resolve-pr-threads.sh" in content, "Must reference the thread resolution script"
+
+    def test_has_merge_conflict_check(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "merge conflict" in content.lower(), "Must check for merge conflicts"
+        assert "CONFLICT ZONE" in content, "Must flag findings in conflicting files"
+        assert "Merge Conflicts: FAIL" in content, "Must report conflicts in review output"
+
+    def test_merge_conflict_skipped_for_special_modes(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        # The skip section must mention both flags AND the word "skip" in context
+        lower = content.lower()
+        assert "skip this check" in lower or "skip when" in lower, (
+            "Must explicitly state when conflict check is skipped"
+        )
+        assert "--comments-only" in content, "Must skip conflict check for --comments-only"
+        assert "--post-merge" in content, "Must skip conflict check for --post-merge"
+
+    def test_has_merge_conflict_resolution_tiers(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Tier 1" in content, "Must have Tier 1 (Auto-Regenerate)"
+        assert "Tier 2" in content, "Must have Tier 2 (Auto-Resolve by Owner)"
+        assert "Tier 3" in content, "Must have Tier 3 (Auto-Merge with Verification)"
+        assert "Tier 4" in content, "Must have Tier 4 (Flag for Human Review)"
+
+    def test_tier_1_covers_lockfiles(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "package-lock.json" in content, "Tier 1 must handle npm lockfile"
+        assert "poetry.lock" in content, "Tier 1 must handle poetry lockfile"
+
+    def test_tier_2_has_ownership_rules(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        assert "Accept **theirs**" in content, "Tier 2 must define accept-theirs strategy"
+        assert "Accept **ours**" in content, "Tier 2 must define accept-ours strategy"
+        assert ".specify/scripts" in content, "Tier 2 must cover vendor scripts"
+
+    def test_tier_4_flags_security_code(self):
+        content = _REVIEW_CMD.read_text(encoding="utf-8")
+        lower = content.lower()
+        assert "auth" in lower and "security" in lower, "Tier 4 must flag security-sensitive conflicts"
+        assert "human review" in lower, "Tier 4 must require human review"
 
     def test_no_unresolved_placeholders(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
@@ -178,6 +254,7 @@ class TestReviewTemplateFrontmatter:
     def test_has_phase_section_structure(self):
         content = _REVIEW_TEMPLATE.read_text(encoding="utf-8")
         assert "## Phase N Review" in content, "Must have phase review section template"
+        assert "### Merge Conflicts" in content, "Must have merge conflict section"
         assert "### Spec Compliance" in content, "Must have spec compliance section"
         assert "### Code Quality" in content, "Must have code quality section"
         assert "### Security" in content, "Must have security section"
@@ -188,3 +265,56 @@ class TestReviewTemplateFrontmatter:
         assert "PASS" in content, "Must include PASS marker"
         assert "FAIL" in content, "Must include FAIL marker"
         assert "SKIPPED" in content, "Must include SKIPPED marker"
+
+    def test_has_extended_review_sections(self):
+        content = _REVIEW_TEMPLATE.read_text(encoding="utf-8")
+        assert "Batch-rejected" in content, "Must include batch-rejected PR metric line"
+        assert "### External Comment Responses" in content, (
+            "Must include external comment response table section"
+        )
+        assert "### Post-Merge Verification" in content, (
+            "Must include post-merge verification section"
+        )
+        assert "REVERTED" in content, "Must detect silent reversions in post-merge"
+
+
+class TestResolveThreadsScript:
+    """Verify the thread resolution script exists and has required functionality."""
+
+    def test_script_exists(self):
+        assert _RESOLVE_THREADS_SH.exists(), "resolve-pr-threads.sh must exist"
+
+    def test_script_is_executable(self):
+        import os
+        assert os.access(_RESOLVE_THREADS_SH, os.X_OK), "Script must be executable"
+
+    def test_script_has_graphql_query(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "reviewThreads" in content, "Must query review threads via GraphQL"
+        assert "resolveReviewThread" in content, "Must use resolveReviewThread mutation"
+
+    def test_script_checks_comment_response_protocol(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "ADDRESSED" in content, "Must detect ADDRESSED responses"
+        assert "REJECTED" in content, "Must detect REJECTED responses"
+        assert "ISSUED" in content, "Must detect ISSUED responses"
+        assert "CLARIFY" in content, "Must detect CLARIFY responses"
+
+    def test_script_skips_clarify_threads(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        # CLARIFY should not trigger resolution
+        assert "CLARIFY" in content
+        # Check that CLARIFY is counted separately, not resolved
+        assert "left open" in content.lower() or "remain open" in content.lower()
+
+    def test_script_supports_dry_run(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "--dry-run" in content, "Must support --dry-run flag"
+
+    def test_script_supports_explicit_pr(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "--pr" in content, "Must support --pr NUMBER flag"
+
+    def test_script_checks_gh_availability(self):
+        content = _RESOLVE_THREADS_SH.read_text(encoding="utf-8")
+        assert "command -v gh" in content, "Must check for gh CLI"
