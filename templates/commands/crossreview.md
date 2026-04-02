@@ -46,14 +46,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      ```
      Then continue with defaults.
 
-4. **Verify the harness CLI is installed**: Run `command -v $REVIEW_HARNESS`. If not found:
-   ```
-   Harness CLI '$REVIEW_HARNESS' not found. Install it:
-     codex: https://github.com/openai/codex
-     claude: https://github.com/anthropics/claude-code
-     gemini: https://github.com/google-gemini/gemini-cli
-   ```
-   Then stop.
+4. **Harness availability**: Do NOT check `command -v` here — the launcher and backend handle CLI resolution (including non-PATH installs like `~/.claude/local/`). If the harness is missing, the backend will return a structured error in the JSON output.
 
 5. **Determine the review scope**:
 
@@ -105,6 +98,17 @@ You **MUST** consider the user input before proceeding (if not empty).
        echo "" >> FEATURE_DIR/.crossreview.patch
      fi
    done
+   # Include contracts/ directory if it exists
+   if [ -d "FEATURE_DIR/contracts" ]; then
+     for contract in FEATURE_DIR/contracts/*.md FEATURE_DIR/contracts/*.json FEATURE_DIR/contracts/*.yaml; do
+       if [ -f "$contract" ]; then
+         echo "---" >> FEATURE_DIR/.crossreview.patch
+         echo "## contracts/$(basename "$contract")" >> FEATURE_DIR/.crossreview.patch
+         cat "$contract" >> FEATURE_DIR/.crossreview.patch
+         echo "" >> FEATURE_DIR/.crossreview.patch
+       fi
+     done
+   fi
    echo "spec.md plan.md tasks.md" > FEATURE_DIR/.crossreview-files.txt
    ```
 
@@ -202,13 +206,14 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 9. **Generate timestamp**: `TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)`
 
-10. **Invoke the launcher script**:
+10. **Invoke the launcher script and capture the output path**:
     ```bash
+    CROSSREVIEW_OUTPUT=".shared/crossreview-${REVIEW_HARNESS}-${TIMESTAMP}.json"
     bash scripts/bash/crossreview.sh \
       --harness "$REVIEW_HARNESS" \
       --model "$REVIEW_MODEL" \
       --effort "$REVIEW_EFFORT" \
-      --output ".shared/crossreview-${REVIEW_HARNESS}-${TIMESTAMP}.json" \
+      --output "$CROSSREVIEW_OUTPUT" \
       --prompt-file "FEATURE_DIR/.crossreview-prompt.md" \
       --patch-file "FEATURE_DIR/.crossreview.patch" \
       --schema-file "FEATURE_DIR/.crossreview.schema.json"
@@ -219,7 +224,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
     Note: crossreview.sh delegates to crossreview-backend.py for the actual harness CLI invocation and JSON processing.
 
-11. **Read the output JSON** from `.shared/crossreview-*.json`. Parse the JSON structure.
+11. **Read the output JSON** from `$CROSSREVIEW_OUTPUT` (the specific file from this run, not a wildcard). Parse the JSON structure.
 
 12. **Present findings** to the user:
 

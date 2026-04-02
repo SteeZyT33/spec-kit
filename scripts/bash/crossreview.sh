@@ -34,11 +34,8 @@ done
 
 [[ -z "$HARNESS" || -z "$OUTPUT" || -z "$PROMPT_FILE" || -z "$PATCH_FILE" || -z "$SCHEMA_FILE" ]] && usage
 
-# Verify harness CLI is installed
-if ! command -v "$HARNESS" &>/dev/null; then
-  echo "ERROR: $HARNESS CLI not found. Install it first."
-  exit 1
-fi
+# Skip PATH-only harness check — the backend resolves CLI locations
+# (e.g., Claude under ~/.claude/local/). Let the backend own discovery.
 
 # Locate the backend script (relative to this script)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

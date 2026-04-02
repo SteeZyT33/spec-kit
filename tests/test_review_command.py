@@ -200,10 +200,15 @@ class TestReviewCommandContent:
         assert "CONFLICT ZONE" in content, "Must flag findings in conflicting files"
         assert "Merge Conflicts: FAIL" in content, "Must report conflicts in review output"
 
-    def test_merge_conflict_skipped_for_comments_only(self):
+    def test_merge_conflict_skipped_for_special_modes(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")
-        assert "--comments-only" in content, "Must mention skipping conflict check for --comments-only"
-        assert "--post-merge" in content, "Must mention skipping conflict check for --post-merge"
+        # The skip section must mention both flags AND the word "skip" in context
+        lower = content.lower()
+        assert "skip this check" in lower or "skip when" in lower, (
+            "Must explicitly state when conflict check is skipped"
+        )
+        assert "--comments-only" in content, "Must skip conflict check for --comments-only"
+        assert "--post-merge" in content, "Must skip conflict check for --post-merge"
 
     def test_has_merge_conflict_resolution_tiers(self):
         content = _REVIEW_CMD.read_text(encoding="utf-8")

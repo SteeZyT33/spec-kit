@@ -95,11 +95,18 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 6. **Check for merge conflicts** against the target branch:
 
-   Run a dry-run merge to detect conflicts:
+   Run a dry-run merge to detect conflicts. The working tree must be clean first (this command modifies the index):
    ```bash
+   # Stash any uncommitted changes before the dry-run
+   git stash --include-untracked -q 2>/dev/null
+   STASHED=$?
+
    git merge --no-commit --no-ff main 2>&1
    MERGE_STATUS=$?
    git merge --abort 2>/dev/null
+
+   # Restore stashed changes
+   [[ $STASHED -eq 0 ]] && git stash pop -q 2>/dev/null
    ```
 
    **If no conflicts** (`MERGE_STATUS == 0`): proceed silently (no output needed).
@@ -317,6 +324,9 @@ Use this structure for each phase section:
 
 ```markdown
 ## Phase N Review — YYYY-MM-DD
+
+### Merge Conflicts: PASS | FAIL
+- [conflict report — files, tiers, resolution status]
 
 ### Spec Compliance: PASS | FAIL
 - [findings with file:line references]
