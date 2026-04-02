@@ -66,6 +66,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - `--security`: Force security pass regardless of spec content
    - `--parallel`: Run review as background agent (see Parallel Mode section)
    - `--phase N`: Review a specific phase (default: current/latest completed phase)
+   - `--comments-only`: Skip all review passes (spec compliance, code quality, security). Jump directly to the Comment Response Protocol for new PR comments. Use when self-review already passed and only external reviewer comments need responses.
+   - `--post-merge`: Run post-merge verification only — diff merged main against last reviewed commit to detect silent reversions by linters, auto-formatters, or post-merge hooks.
    - Any remaining text: Additional context or focus area for the review
 
 3. **Load review context** — read from FEATURE_DIR:
@@ -88,9 +90,15 @@ You **MUST** consider the user input before proceeding (if not empty).
    - This provides context for review feedback (e.g., "The frontend task assigned to [@Frontend Developer] has...")
    - If no agent markers are present, proceed without this context
 
+## Comments-Only Mode
+
+If `--comments-only` was passed, skip the Review Passes section entirely. Jump directly to **PR Lifecycle > Step 4: Comment Response Protocol**. Load the existing PR (from the current branch or specified in arguments) and process only new, unresponded comments.
+
+This mode exists because the common pattern after initial self-review is: external reviewers (Copilot, CodeRabbit, human reviewers) leave comments that need responses without re-reviewing the entire implementation.
+
 ## Review Passes
 
-Execute these three passes sequentially. For each pass, produce findings with file:line references.
+If `--comments-only` was NOT passed, execute these three passes sequentially. For each pass, produce findings with file:line references.
 
 ### Pass 1 — Spec Compliance (always runs)
 
@@ -204,6 +212,16 @@ Use this structure for each phase section:
 
 ### PR: #[number] — [status]
 - Comments: [total] | Addressed: [n] | Rejected: [n] | Issued: [n] | Clarify: [n]
+- Batch-rejected: [count] ([path pattern])
+
+### External Comment Responses
+| # | Reviewer | File | Status | Detail |
+|---|---------|------|--------|--------|
+| 1 | copilot-pull-request-reviewer | src/api.py:42 | ADDRESSED | Fixed in abc1234 |
+| 2 | coderabbitai[bot] | .specify/scripts/common.sh | REJECTED | Vendor code (batch) |
+
+### Post-Merge Verification
+- REVERTED: [count] | OK: [count] | Issues created: [issue numbers]
 ```
 
 If no issues are found in a pass, report: `- No issues found.`
@@ -256,6 +274,35 @@ When processing PR comments (from other contributors, reviewers, or automated sy
 - Never say "noted for later" without creating an issue. If deferring, always use ISSUED with a real GitHub issue.
 - After a CLARIFY response is answered, follow up with ADDRESSED, REJECTED, or ISSUED.
 
+**Batch-Reject Detection**:
+
+When processing comments, if **3 or more rejections share a file path pattern** (e.g., `.specify/scripts/*`, `docs/research/*`), offer batch rejection:
+
+```
+Detected pattern: 6 comments target .specify/scripts/* (vendor code)
+Batch reject all with: "REJECTED — vendor code managed upstream by spec-kit"? [y/N]
+```
+
+If `FEATURE_DIR/review-exclusions.md` exists, read it for pre-declared exclusion paths:
+```markdown
+<!-- review-exclusions.md -->
+- .specify/scripts/* — vendor code, upstream responsibility
+- docs/research/* — salvaged reference material, not production code
+```
+
+Comments targeting files matching a declared exclusion path are auto-rejected with the documented reason. The user is informed but not prompted.
+
+**Reviewer Profile Awareness**:
+
+Track which external reviewer submitted each comment and note their typical focus areas to contextualize responses:
+
+| Reviewer | Typical Focus | Common False Positives |
+|----------|--------------|----------------------|
+| copilot-pull-request-reviewer | Error handling, input validation, type safety | Vendor code, reference material |
+| coderabbitai[bot] | Architecture, documentation, naming conventions | Salvaged historical content, generated files |
+
+When a comment matches a reviewer's known false-positive pattern AND targets an exclusion path, this strengthens the batch-reject case. Reviewer profiles are advisory — every comment still gets an individual response.
+
 **Step 5: Deferred Fix Protocol**
 
 For every ISSUED response, create a GitHub issue containing:
@@ -266,6 +313,42 @@ For every ISSUED response, create a GitHub issue containing:
   - Why it was deferred (an actual reason — not "noted for later")
   - Suggested approach if known
 - When GitHub tools are unavailable: record the same information in review.md under the Actions Taken section with `ISSUED:` prefix.
+
+**Step 6: Conversation Thread Resolution**
+
+If branch protection requires conversation resolution before merge, all review threads must be resolved. After responding to all comments:
+- Use `gh api graphql` with `resolveReviewThread` mutation to batch-resolve threads that have been ADDRESSED, REJECTED, or ISSUED
+- Do NOT resolve CLARIFY threads — those await a response
+- If `gh` is unavailable, instruct the user to resolve threads manually in the GitHub UI
+
+## Post-Merge Verification
+
+After a PR is merged to main, run a verification diff:
+
+1. **Diff merged main against the last reviewed commit**: `git diff <last-reviewed-sha>..main -- <files-in-phase>`
+2. **Flag silent reversions**: Any change that undoes a reviewed fix (auto-fix commit, suggest-fix commit) is a reversion. Report:
+   ```
+   Post-merge verification:
+     REVERTED: .github/workflows/ci.yml:3 — permissions moved back to workflow-level
+     REVERTED: scripts/query-index.py:166 — nosec comment removed by linter
+     OK: 42 files unchanged since review
+   ```
+3. **Common causes**: Auto-formatters, linters with `--fix`, post-merge hooks, rebasing that drops commits
+4. **Action**: Reversions are reported in review.md under a `### Post-Merge Verification` section. If critical (security fixes reverted), create a GitHub issue immediately.
+
+This step runs only when explicitly invoked (`/speckit.review --post-merge`) or when the review command detects it's running on a branch that has already been merged.
+
+## CI Debug Structure for New Integrations
+
+When CI fails due to a newly added tool (scanner, linter, formatter), use this structured approach instead of generic "fix and push again":
+
+1. **Enable one scanner at a time** — don't add Semgrep + Gitleaks + Bandit + Trivy in a single commit
+2. **Run locally first** to identify all findings before pushing: `semgrep --config auto .` or equivalent
+3. **Commit triage per-scanner** — create ignore/baseline files (`.semgrepignore`, `.secrets.baseline`, `nosec` annotations) with documented justifications
+4. **Push and verify one scanner passes** before adding the next
+5. **Expect 3-5 CI rounds** for a multi-scanner setup — this is normal, not a failure
+
+This guidance appears in the CI verification step (Step 3) when the failing check is a security scanner or linter that was added in the current phase.
 
 ## Inbox Integration (Spec 003 — conditional)
 

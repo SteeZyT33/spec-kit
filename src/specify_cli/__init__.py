@@ -2683,10 +2683,33 @@ def update(
             updated_pages += 1
     tracker.complete("page-templates", f"{updated_pages} page templates")
 
-    # Step 5: Ensure scripts are executable
-    tracker.add("scripts", "Ensure scripts are executable")
+    # Step 5: Install/update .specify/scripts/
+    tracker.add("scripts", "Update .specify/scripts")
+    variant_dir = "bash" if selected_script == "sh" else "powershell"
+    if core and (core / "scripts").is_dir():
+        scripts_src = core / "scripts"
+    else:
+        repo_root = Path(__file__).parent.parent.parent
+        scripts_src = repo_root / "scripts"
+
+    updated_scripts = 0
+    if scripts_src.is_dir():
+        variant_src = scripts_src / variant_dir
+        if variant_src.is_dir():
+            dest_variant = target / ".specify" / "scripts" / variant_dir
+            dest_variant.mkdir(parents=True, exist_ok=True)
+            for src_path in variant_src.rglob("*"):
+                if src_path.is_file():
+                    rel_path = src_path.relative_to(variant_src)
+                    dst_path = dest_variant / rel_path
+                    dst_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_path, dst_path)
+                    updated_scripts += 1
+    tracker.complete("scripts", f"{updated_scripts} scripts ({variant_dir})")
+
+    # Step 6: Ensure scripts are executable
+    tracker.add("chmod", "Set script permissions recursively")
     ensure_executable_scripts(target, tracker=tracker)
-    tracker.complete("scripts", "done")
 
     console.print(tracker.render())
     console.print("\n[bold green]Project updated successfully![/bold green]")
