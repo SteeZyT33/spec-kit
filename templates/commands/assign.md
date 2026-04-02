@@ -54,14 +54,38 @@ You **MUST** consider the user input before proceeding (if not empty).
 2. **Parse flags from user input**:
    - `--reassign-all`: Set REASSIGN_ALL = true (clear all existing annotations, reassign from scratch)
    - `--human-tasks "T003-T009,T015"`: Pre-mark specific tasks for `[@Human Lead]` assignment. Supports ranges (T003-T009) and comma-separated lists. These tasks skip agent matching entirely.
+   - `--force`: Bypass context detection and proceed with assignment regardless of task count or worktree status.
    - Any remaining text: Additional context or instruction for the assignment heuristic (e.g., "focus on security-heavy assignments")
 
-3. **Read configuration**: Read `.specify/init-options.json` from the project root.
+3. **Context detection — should this spec use assign?**
+
+   Before running the scoring logic, evaluate whether assignment adds value for this spec:
+
+   a. **Count tasks**: Read tasks.md and count lines matching `- [ ] T\d+`.
+   b. **Check for active worktrees**: Run `git worktree list` and check for entries in `.claude/worktrees/` that correspond to this feature. If worktrees exist, this is a parallel dispatch scenario.
+   c. **Evaluate**:
+      - If `--force` was passed: skip context detection entirely, proceed to step 4.
+      - If task count >= 30 OR phases >= 4: proceed to step 4 (large specs benefit from assignment even sequentially).
+      - If active worktrees exist for this feature: proceed to step 4 in parallel dispatch mode.
+      - If task count < 15 AND no active worktrees AND no `--force`:
+        ```
+        ## Skip Recommendation
+
+        This spec has [N] tasks in [M] phases with no parallel worktrees active.
+        Agent assignment adds overhead without value for single-agent sequential execution.
+
+        **Recommendation**: Skip `/speckit.assign` and proceed directly to `/speckit.implement`.
+
+        To override: `/speckit.assign --force`
+        ```
+        Then stop. Do not proceed to scoring.
+
+4. **Read configuration**: Read `.specify/init-options.json` from the project root.
    - Extract the `ai` field (identifies the active AI harness — e.g., "claude", "codex", "cursor")
    - Extract the external agent path: check for `agent_source` field first, then fall back to `ai_commands_dir` for backward compatibility. This is a filesystem path to an external agent definition directory.
    - If `init-options.json` does not exist or cannot be parsed, use defaults: ai = "generic", agent_source = null
 
-4. **Discover available agents** using a two-tier approach:
+5. **Discover available agents** using a two-tier approach:
 
    ### Tier 1: Internal Agents (zero-config, always available)
 
@@ -110,7 +134,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    **Priority**: Evaluate external agents first. Use internal agents only if no external agent achieves a non-zero keyword match score.
 
-5. **Read and parse tasks.md**:
+6. **Read and parse tasks.md**:
    - Load tasks.md from FEATURE_DIR
    - Identify task lines: lines matching the pattern `- [ ] T\d+` (checkbox + task ID)
    - For each task line, extract:
@@ -120,18 +144,18 @@ You **MUST** consider the user input before proceeding (if not empty).
      - The task description text (everything after the markers)
      - The phase/section the task belongs to (from the heading structure)
 
-6. **Determine which tasks need assignment**:
+7. **Determine which tasks need assignment**:
    - If REASSIGN_ALL is true: strip all existing `[@...]` annotations from all unchecked task lines — every unchecked task gets reassigned
    - If REASSIGN_ALL is false: skip any unchecked task that already has an `[@...]` annotation (preserve manual edits and previous assignments)
    - Among unchecked tasks, those without `[@...]` annotations are candidates for assignment
    - Completed tasks (`- [x]` / `- [X]`) are never modified by this command
 
-7. **Apply `--human-tasks` pre-assignments** (if flag was provided):
+8. **Apply `--human-tasks` pre-assignments** (if flag was provided):
    - Parse the task ID list (ranges like `T003-T009` and comma-separated like `T003,T015`)
    - For each task ID: if it exists in the candidate list, assign `[@Human Lead]` immediately. If it does not exist in tasks.md (typo or wrong ID), warn: `"Warning: T099 not found in tasks.md — skipping"`
    - Remove successfully assigned tasks from the candidate list — they skip agent matching entirely
 
-8. **Match agents to tasks** using heuristic keyword matching:
+9. **Match agents to tasks** using heuristic keyword matching:
 
    For each remaining candidate task:
 
@@ -149,7 +173,7 @@ You **MUST** consider the user input before proceeding (if not empty).
       - Apply phase context bonus from step (a)
       - External agents: also check the agent's `description` and `tools` fields for keyword matches
       - External agents: give a small bonus (+1) if the agent's division matches the task's domain
-      - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)` where `raw_score` = keyword match count + phase/division bonus points. A raw_score of 10+ yields confidence 1.0. The 0.3 threshold corresponds to ~3 raw-score points (keyword matches plus any phase/division bonuses), so a raw_score < 3 results in `[@Unassigned]`.
+      - Normalize the score to a 0.0–1.0 **confidence** range: `confidence = min(raw_score / 10, 1.0)`
 
    c. **Select the best match**:
       - First, check `[@Human Lead]` phrase triggers. If any keyword phrase matches the task description, assign `[@Human Lead]` directly and skip external/internal scoring (unless the task was already pre-assigned via `--human-tasks`)
@@ -272,12 +296,17 @@ The `[@Agent Name]` format is the standard convention for agent role annotations
 ## Quick Reference
 
 ```bash
-# Assign agents to tasks (zero-config, uses harness built-in agents)
+# Assign agents to tasks (will recommend skipping for small single-agent specs)
 /speckit.assign
 
-# Assign agents using an external agent library
-# First: add "agent_source": "/path/to/agents" to .specify/init-options.json
-/speckit.assign
+# Force assignment even when context detection recommends skipping
+/speckit.assign --force
+
+# Pre-mark human judgment tasks before auto-assignment
+/speckit.assign --human-tasks "T003-T009,T015"
+
+# Combine: force + human pre-marks
+/speckit.assign --force --human-tasks "T003-T009"
 
 # Reassign all tasks from scratch (clears existing annotations)
 /speckit.assign --reassign-all

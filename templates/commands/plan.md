@@ -153,6 +153,47 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 **Output**: data-model.md, /contracts/*, quickstart.md, agent-specific file
 
+### Phase 1.5: Agent Expertise Consultation (optional)
+
+**Prerequisites:** Phase 1 complete (plan structure established). This step is optional and additive — it enriches the plan with specialist knowledge but never restructures it.
+
+1. **Read configuration**: Check `.specify/init-options.json` for `agent_source` (or `ai_commands_dir` fallback). This determines whether external agent definitions are available.
+
+2. **Scan spec.md for domain keywords**: Read the feature spec and check for keywords that activate specialist lenses. Use the Tier 1 activation table below:
+
+   | Spec Keywords | Agent Lens | Tasks to Consider Adding |
+   |---------------|-----------|--------------------------|
+   | authentication, OAuth, login, session, token, password, RBAC, permissions | Security Engineer | Threat model for auth flows, validate auth boundaries at system edges, verify token lifecycle (creation, refresh, revocation), check for credential exposure |
+   | migration, schema change, data transfer, ETL, import, export | Data Engineer | Create rollback strategy, validate data integrity post-migration, test with representative data volume, document migration runbook |
+   | frontend, UI, component, page, form, layout, responsive | Frontend Developer | Accessibility audit (WCAG), responsive breakpoint testing, component isolation verification, loading state coverage |
+   | CI/CD, deployment, pipeline, infrastructure, Docker, Kubernetes | DevOps Automator | Deployment rollback plan, environment parity check, configuration validation, secret rotation verification |
+   | test, coverage, quality, validation, verification | Evidence Collector | Coverage threshold tasks, edge case identification from spec scenarios, regression test for existing behavior |
+   | database, SQL, query, index, schema, ORM | Database Optimizer | Index strategy for new queries, migration performance test, query plan analysis for complex joins |
+
+   For each matching lens, append a **Specialist Considerations** subsection to the plan:
+
+   ```markdown
+   ### Specialist Considerations
+
+   The following tasks were identified by consulting agent expertise lenses activated by spec keywords:
+
+   **[Agent Name] lens** (triggered by: [matched keywords]):
+   - [Specific task recommendation based on the spec content]
+   - [Another task recommendation]
+   ```
+
+   Only add tasks that are genuinely relevant to THIS spec's content. Do not add generic checklists — each recommendation must reference a specific aspect of the feature.
+
+3. **External agent catalog** (if `agent_source` is configured):
+   - Scan the external agent directory for markdown files with YAML frontmatter
+   - For each external agent, check if its `description` or `tools` fields contain keywords that match spec.md content
+   - If matches are found, add specialist considerations from those agents as well
+   - External agents supplement (don't replace) the Tier 1 lens table
+
+4. **Guard clause**: If no agent catalog is configured AND no spec keywords match any Tier 1 lens, skip this step entirely with no output. The plan proceeds as before — agent expertise is additive, never required.
+
+**Output**: Specialist Considerations section appended to plan.md (if any lenses activated)
+
 ## Key rules
 
 - Use absolute paths
