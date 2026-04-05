@@ -206,8 +206,9 @@ class MarkdownIntegrationTests:
     # -- Complete file inventory ------------------------------------------
 
     COMMAND_STEMS = [
-        "analyze", "checklist", "clarify", "constitution",
-        "implement", "plan", "specify", "tasks", "taskstoissues",
+        "analyze", "assign", "checklist", "clarify", "constitution",
+        "crossreview", "implement", "plan", "review", "specify",
+        "tasks", "taskstoissues",
     ]
 
     def _expected_files(self, script_variant: str) -> list[str]:
@@ -232,6 +233,8 @@ class MarkdownIntegrationTests:
 
         if script_variant == "sh":
             for name in ["check-prerequisites.sh", "common.sh", "create-new-feature.sh",
+                         "crossreview-backend.py", "crossreview.sh",
+                         "resolve-pr-threads.sh",
                          "setup-plan.sh", "update-agent-context.sh"]:
                 files.append(f".specify/scripts/bash/{name}")
         else:
@@ -240,8 +243,10 @@ class MarkdownIntegrationTests:
                 files.append(f".specify/scripts/powershell/{name}")
 
         for name in ["agent-file-template.md", "checklist-template.md",
-                     "constitution-template.md", "plan-template.md",
-                     "spec-template.md", "tasks-template.md"]:
+                     "constitution-template.md", "crossreview.schema.json",
+                     "inbox-message-template.md", "plan-template.md",
+                     "review-template.md", "spec-template.md",
+                     "tasks-template.md"]:
             files.append(f".specify/templates/{name}")
 
         files.append(".specify/memory/constitution.md")

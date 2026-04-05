@@ -22,6 +22,9 @@ ARGUMENT_HINTS: dict[str, str] = {
     "constitution": "Principles or values for the project constitution",
     "checklist": "Domain or focus area for the checklist",
     "taskstoissues": "Optional filter or label for GitHub issues",
+    "assign": "Optional assignment constraints or agent preferences",
+    "review": "Optional review focus areas or PR number",
+    "crossreview": "Optional target stage or harness for cross-review",
 }
 
 

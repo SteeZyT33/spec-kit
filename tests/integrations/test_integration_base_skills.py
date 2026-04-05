@@ -100,8 +100,9 @@ class SkillsIntegrationTests:
         skill_files = [f for f in created if "scripts" not in f.parts]
 
         expected_commands = {
-            "analyze", "checklist", "clarify", "constitution",
-            "implement", "plan", "specify", "tasks", "taskstoissues",
+            "analyze", "assign", "checklist", "clarify", "constitution",
+            "crossreview", "implement", "plan", "review", "specify",
+            "tasks", "taskstoissues",
         }
 
         # Derive command names from the skill directory names
@@ -298,8 +299,9 @@ class SkillsIntegrationTests:
     # -- Complete file inventory ------------------------------------------
 
     _SKILL_COMMANDS = [
-        "analyze", "checklist", "clarify", "constitution",
-        "implement", "plan", "specify", "tasks", "taskstoissues",
+        "analyze", "assign", "checklist", "clarify", "constitution",
+        "crossreview", "implement", "plan", "review", "specify",
+        "tasks", "taskstoissues",
     ]
 
     def _expected_files(self, script_variant: str) -> list[str]:
@@ -327,6 +329,9 @@ class SkillsIntegrationTests:
                 ".specify/scripts/bash/check-prerequisites.sh",
                 ".specify/scripts/bash/common.sh",
                 ".specify/scripts/bash/create-new-feature.sh",
+                ".specify/scripts/bash/crossreview-backend.py",
+                ".specify/scripts/bash/crossreview.sh",
+                ".specify/scripts/bash/resolve-pr-threads.sh",
                 ".specify/scripts/bash/setup-plan.sh",
                 ".specify/scripts/bash/update-agent-context.sh",
             ]
@@ -343,7 +348,10 @@ class SkillsIntegrationTests:
             ".specify/templates/agent-file-template.md",
             ".specify/templates/checklist-template.md",
             ".specify/templates/constitution-template.md",
+            ".specify/templates/crossreview.schema.json",
+            ".specify/templates/inbox-message-template.md",
             ".specify/templates/plan-template.md",
+            ".specify/templates/review-template.md",
             ".specify/templates/spec-template.md",
             ".specify/templates/tasks-template.md",
         ]

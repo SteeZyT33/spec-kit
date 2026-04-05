@@ -821,6 +821,9 @@ SKILL_DESCRIPTIONS = {
     "constitution": "Create or update project governing principles and development guidelines.",
     "checklist": "Generate custom quality checklists for validating requirements completeness and clarity.",
     "taskstoissues": "Convert tasks from tasks.md into GitHub issues.",
+    "assign": "Assign the best-fit agent to each task based on capabilities, descriptions, and phase context.",
+    "review": "Post-implementation review that validates code against spec artifacts and manages the GitHub review cycle.",
+    "crossreview": "Cross-harness adversarial review at any pipeline stage using a different AI harness for validation.",
 }
 
 
