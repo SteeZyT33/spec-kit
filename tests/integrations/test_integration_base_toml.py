@@ -226,7 +226,9 @@ class TomlIntegrationTests:
         finally:
             os.chdir(old_cwd)
         assert result.exit_code == 0, f"init --ai {self.KEY} failed: {result.output}"
-        assert f"--integration {self.KEY}" in result.output
+        i = get_integration(self.KEY)
+        cmd_dir = i.commands_dest(project)
+        assert cmd_dir.is_dir(), f"--ai {self.KEY} did not create commands directory"
 
     def test_integration_flag_creates_files(self, tmp_path):
         from typer.testing import CliRunner
@@ -254,8 +256,9 @@ class TomlIntegrationTests:
     # -- Complete file inventory ------------------------------------------
 
     COMMAND_STEMS = [
-        "analyze", "checklist", "clarify", "constitution",
-        "implement", "plan", "specify", "tasks", "taskstoissues",
+        "analyze", "assign", "checklist", "clarify", "constitution",
+        "crossreview", "implement", "plan", "review", "specify",
+        "tasks", "taskstoissues",
     ]
 
     def _expected_files(self, script_variant: str) -> list[str]:
@@ -280,6 +283,8 @@ class TomlIntegrationTests:
 
         if script_variant == "sh":
             for name in ["check-prerequisites.sh", "common.sh", "create-new-feature.sh",
+                         "crossreview-backend.py", "crossreview.sh",
+                         "resolve-pr-threads.sh",
                          "setup-plan.sh", "update-agent-context.sh"]:
                 files.append(f".specify/scripts/bash/{name}")
         else:
@@ -288,8 +293,10 @@ class TomlIntegrationTests:
                 files.append(f".specify/scripts/powershell/{name}")
 
         for name in ["agent-file-template.md", "checklist-template.md",
-                     "constitution-template.md", "plan-template.md",
-                     "spec-template.md", "tasks-template.md"]:
+                     "constitution-template.md", "crossreview.schema.json",
+                     "inbox-message-template.md", "plan-template.md",
+                     "review-template.md", "spec-template.md",
+                     "tasks-template.md"]:
             files.append(f".specify/templates/{name}")
 
         files.append(".specify/memory/constitution.md")
